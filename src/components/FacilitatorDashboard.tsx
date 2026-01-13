@@ -55,21 +55,25 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
 
       const config = { headers: { Authorization: `Bearer ${token}` } };
 
-      const [coursesRes, modulesRes, testsRes, assignRes, usersRes, lessonsRes] = await Promise.all([
-        axios.get(`${API_BASE_URL}/courses`, config),
-        axios.get(`${API_BASE_URL}/modules`, config),
-        axios.get(`${API_BASE_URL}/quizzes`, config),     
-        axios.get(`${API_BASE_URL}/assignments`, config),
-        axios.get(`${API_BASE_URL}/users`, config),
-        axios.get(`${API_BASE_URL}/lessons`, config) 
+     const [
+        coursesRes, modulesRes, lessonsRes, quizzesRes, 
+        assignmentsRes, submissionsRes, usersRes
+      ] = await Promise.all([
+        axios.get(`${API_BASE_URL}/courses`, config).catch(() => ({ data: [] })), // ✅ Catch error and return empty array
+        axios.get(`${API_BASE_URL}/modules`, config).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/lessons`, config).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/quizzes`, config).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/assignments`, config).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/submissions/assignment`, config).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/users`, config).catch(() => ({ data: [] }))
       ]);
 
-      setCourses(coursesRes.data);
-      setModules(modulesRes.data);
-      setTests(testsRes.data);
-      setAssignments(assignRes.data);
-      setUsersList(usersRes.data);
-      setStudyMaterials(lessonsRes.data);
+      // ✅ SAFETY CHECK: Ensure it's an array before setting state
+      setCourses(Array.isArray(coursesRes.data) ? coursesRes.data : []);
+      setModules(Array.isArray(modulesRes.data) ? modulesRes.data : []);
+      setStudyMaterials(Array.isArray(lessonsRes.data) ? lessonsRes.data : []);
+      setTests(Array.isArray(quizzesRes.data) ? quizzesRes.data : []);
+      setAssignments(Array.isArray(assignmentsRes.data) ? assignmentsRes.data : []);
 
     } catch (err) {
       console.error("Failed to load facilitator data", err);
