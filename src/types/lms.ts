@@ -26,7 +26,8 @@ export interface Course {
   id: string;
   title: string;
   description: string;
-  facilitatorId: string;
+  facilitatorId?: string; // Optional
+  facilitator?: User;     // ✅ Add this (Backend sends this)
   isActive: boolean;
   createdAt: string;
 }

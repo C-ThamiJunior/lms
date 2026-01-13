@@ -20,7 +20,7 @@ interface FacilitatorDashboardProps {
   onNavigateToLanding?: () => void;
 }
 
-const API_BASE_URL = 'b-t-backend-production-1580.up.railway.app/api';
+const API_BASE_URL = 'https://b-t-backend-production-1580.up.railway.app/api';
 
 export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ currentUser: propUser, onLogout, onNavigateToLanding }) => {
   // State for User and Data
@@ -87,10 +87,15 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
   }, []);
 
   // Filtering Logic
-  const myCourses = useMemo(() => {
-    if (!user) return [];
-    return courses.filter(c => String(c.facilitatorId) === String(user.id));
-  }, [courses, user]);
+    const myCourses = useMemo(() => {
+      if (!user) return [];
+      
+      return courses.filter(c => {
+        // ✅ Check nested 'facilitator.id' OR flat 'facilitatorId'
+        const fId = c.facilitator?.id || c.facilitatorId;
+        return String(fId) === String(user.id);
+      });
+    }, [courses, user]);
 
   const myModules = useMemo(() => {
     return modules.filter(m => myCourses.some(c => String(c.id) === String(m.courseId)));
