@@ -13,7 +13,7 @@ import {
 import { 
   BookOpen, Home, FileText, Award, MessageCircle, 
   Users, Video, Link as LinkIcon, File,
-  CheckCircle, ChevronRight, X
+  CheckCircle, ChevronRight, X, Clock
 } from 'lucide-react';
 import { ChatSystem } from './ChatSystem';
 import { DiscussionForum } from './DiscussionForum';
@@ -141,6 +141,9 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   const [usersList, setUsersList] = useState<User[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   
+  // ✅ NEW: State for Quiz Attempts
+  const [myQuizAttempts, setMyQuizAttempts] = useState<any[]>([]);
+
   // UI State
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'materials' | 'tests' | 'assignments' | 'chat' | 'discussions'>('materials');
@@ -183,7 +186,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         assignmentsRes, 
         submissionsRes,
         usersRes,
-        messagesRes
+        messagesRes,
+        attemptsRes // ✅ NEW: Fetch Quiz Attempts
       ] = await Promise.all([
         axios.get(`${API_BASE_URL}/courses`, config).catch(() => ({ data: [] })),
         axios.get(`${API_BASE_URL}/modules`, config).catch(() => ({ data: [] })),
@@ -192,8 +196,9 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         axios.get(`${API_BASE_URL}/assignments`, config).catch(() => ({ data: [] })),
         axios.get(`${API_BASE_URL}/submissions/assignment`, config).catch(() => ({ data: [] })),
         axios.get(`${API_BASE_URL}/users`, config).catch(() => ({ data: [] })),
-        // ✅ FETCH USER MESSAGES (Fixed Endpoint)
-        axios.get(`${API_BASE_URL}/messages/user/${currentUserId}`, config).catch(() => ({ data: [] })) 
+        axios.get(`${API_BASE_URL}/messages/user/${currentUserId}`, config).catch(() => ({ data: [] })),
+        // ✅ NEW: Fetch all attempts (we filter for student on frontend)
+        axios.get(`${API_BASE_URL}/attempts/quiz`, config).catch(() => ({ data: [] }))
       ]);
 
       // ✅ Safe Fallback
@@ -209,6 +214,11 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       setAssignmentSubmissions(mySubmissions);
       setUsersList(Array.isArray(usersRes.data) ? usersRes.data : []);
       setMessages(Array.isArray(messagesRes.data) ? messagesRes.data : []);
+      
+      // ✅ NEW: Filter attempts for this student
+      const allAttempts = Array.isArray(attemptsRes.data) ? attemptsRes.data : [];
+      const myAttempts = allAttempts.filter((a: any) => String(a.learnerId) === String(currentUserId));
+      setMyQuizAttempts(myAttempts);
 
     } catch (err) {
       console.error("Failed to load student data", err);
@@ -244,29 +254,36 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   const availableMaterials = useMemo(() => {
     return studyMaterials.filter(mat => {
         const module = modules.find(m => String(m.id) === String(mat.moduleId));
-        
-        // Exclude 'QUIZ' and 'ASSIGNMENT' types from Study Materials tab
         const materialType = ((mat as any).contentType || mat.type || '').toUpperCase();
         const isHiddenType = materialType === 'QUIZ' || materialType === 'ASSIGNMENT';
-
         return module && enrolledCourseIds.includes(String(module.courseId)) && !isHiddenType;
     });
   }, [studyMaterials, modules, enrolledCourseIds]);
 
-  const availableTests = useMemo(() => {
-    return tests.filter(t => enrolledCourseIds.includes(String(t.courseId)));
-  }, [tests, enrolledCourseIds]);
+  // ✅ SPLIT TESTS INTO PENDING AND COMPLETED
+  const { pendingTests, completedTests } = useMemo(() => {
+    const allTests = tests.filter(t => enrolledCourseIds.includes(String(t.courseId)));
+    
+    const completed = allTests.filter(t => 
+        myQuizAttempts.some(a => String(a.quizId) === String(t.id))
+    );
+    
+    const pending = allTests.filter(t => 
+        !myQuizAttempts.some(a => String(a.quizId) === String(t.id))
+    );
+
+    return { pendingTests: pending, completedTests: completed };
+  }, [tests, enrolledCourseIds, myQuizAttempts]);
 
   const availableAssignments = useMemo(() => {
     return assignments.filter(a => enrolledCourseIds.includes(String(a.courseId)) && a.isActive);
   }, [assignments, enrolledCourseIds]);
 
 
-  // --- CHAT SEND LOGIC (Fixed for Backend) ---
+  // --- CHAT SEND LOGIC ---
   const handleSendMessage = async (receiverId: string, messageContent: string) => {
     try {
       const token = localStorage.getItem('token');
-      // ✅ Removed 'message' field to prevent backend 500 error
       const payload = {
         sender: { id: user?.id },
         receiver: { id: receiverId },
@@ -324,6 +341,10 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             headers: { Authorization: `Bearer ${token}` }
         });
         setTestResult(res.data);
+        
+        // Refresh data to move this test to "Completed"
+        fetchData();
+        
     } catch (error) {
         console.error("Submission failed", error);
         alert("Failed to submit test.");
@@ -349,7 +370,6 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             <header className="bg-white border-b border-gray-200 sticky top-0 z-30 px-6 py-4 flex justify-between items-center shadow-sm">
                 <div>
                     <h2 className="text-xl font-bold text-gray-800">{activeTest.title}</h2>
-                    {/* ✅ FIX: Use 'timeLimitInMinutes' instead of 'duration' */}
                     <p className="text-sm text-gray-500">
                         {testQuestions.length} Questions • {activeTest.timeLimitInMinutes ? `${activeTest.timeLimitInMinutes} mins` : 'Untimed'}
                     </p>
@@ -381,64 +401,60 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                     </div>
                 ) : (
                     <>
-                        {testQuestions.length === 0 ? (
-                            <div className="text-center py-10 text-gray-500">Loading questions...</div>
-                        ) : (
-                            testQuestions.map((q, idx) => (
-                                <div key={q.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                                    <div className="bg-slate-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-                                        <span className="font-bold text-slate-700">Question {idx + 1}</span>
-                                        <span className="text-xs font-semibold bg-white border border-gray-200 px-2 py-1 rounded text-gray-500">{q.points} Pts</span>
-                                    </div>
-                                    <div className="p-6">
-                                        <p className="text-lg text-gray-800 mb-6 font-medium">{q.text}</p>
-                                        {q.questionType === 'MULTIPLE_CHOICE' && q.options && (
-                                            <div className="space-y-3">
-                                                {q.options.map((opt: any) => (
-                                                    <label key={opt.id || opt} className={`flex items-center p-4 border rounded-lg cursor-pointer transition-all ${testAnswers[q.id] === (opt.optionText || opt) ? 'border-red-600 bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                                                        <input 
-                                                            type="radio" 
-                                                            name={`q-${q.id}`} 
-                                                            value={opt.optionText || opt} 
-                                                            checked={testAnswers[q.id] === (opt.optionText || opt)}
-                                                            onChange={(e) => handleAnswerChange(q.id, e.target.value)}
-                                                            className="w-4 h-4 text-red-600 focus:ring-red-500"
-                                                        />
-                                                        <span className="ml-3 text-gray-700">{opt.optionText || opt}</span>
-                                                    </label>
-                                                ))}
-                                            </div>
-                                        )}
-                                        {q.questionType === 'TRUE_FALSE' && (
-                                            <div className="space-y-3">
-                                                {['TRUE', 'FALSE'].map(opt => (
-                                                    <label key={opt} className={`flex items-center p-4 border rounded-lg cursor-pointer transition-all ${testAnswers[q.id] === opt ? 'border-red-600 bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                                                        <input 
-                                                            type="radio" 
-                                                            name={`q-${q.id}`} 
-                                                            value={opt} 
-                                                            checked={testAnswers[q.id] === opt}
-                                                            onChange={(e) => handleAnswerChange(q.id, e.target.value)}
-                                                            className="w-4 h-4 text-red-600 focus:ring-red-500"
-                                                        />
-                                                        <span className="ml-3 text-gray-700">{opt}</span>
-                                                    </label>
-                                                ))}
-                                            </div>
-                                        )}
-                                        {q.questionType === 'SHORT_ANSWER' && (
-                                            <textarea 
-                                                rows={3} 
-                                                placeholder="Type your answer..." 
-                                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
-                                                value={testAnswers[q.id] || ''}
-                                                onChange={(e) => handleAnswerChange(q.id, e.target.value)}
-                                            />
-                                        )}
-                                    </div>
+                        {testQuestions.map((q, idx) => (
+                            <div key={q.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                                <div className="bg-slate-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+                                    <span className="font-bold text-slate-700">Question {idx + 1}</span>
+                                    <span className="text-xs font-semibold bg-white border border-gray-200 px-2 py-1 rounded text-gray-500">{q.points} Pts</span>
                                 </div>
-                            ))
-                        )}
+                                <div className="p-6">
+                                    <p className="text-lg text-gray-800 mb-6 font-medium">{q.text}</p>
+                                    {q.questionType === 'MULTIPLE_CHOICE' && q.options && (
+                                        <div className="space-y-3">
+                                            {q.options.map((opt: any) => (
+                                                <label key={opt.id || opt} className={`flex items-center p-4 border rounded-lg cursor-pointer transition-all ${testAnswers[q.id] === (opt.optionText || opt) ? 'border-red-600 bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                                                    <input 
+                                                        type="radio" 
+                                                        name={`q-${q.id}`} 
+                                                        value={opt.optionText || opt} 
+                                                        checked={testAnswers[q.id] === (opt.optionText || opt)}
+                                                        onChange={(e) => handleAnswerChange(q.id, e.target.value)}
+                                                        className="w-4 h-4 text-red-600 focus:ring-red-500"
+                                                    />
+                                                    <span className="ml-3 text-gray-700">{opt.optionText || opt}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {q.questionType === 'TRUE_FALSE' && (
+                                        <div className="space-y-3">
+                                            {['TRUE', 'FALSE'].map(opt => (
+                                                <label key={opt} className={`flex items-center p-4 border rounded-lg cursor-pointer transition-all ${testAnswers[q.id] === opt ? 'border-red-600 bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                                                    <input 
+                                                        type="radio" 
+                                                        name={`q-${q.id}`} 
+                                                        value={opt} 
+                                                        checked={testAnswers[q.id] === opt}
+                                                        onChange={(e) => handleAnswerChange(q.id, e.target.value)}
+                                                        className="w-4 h-4 text-red-600 focus:ring-red-500"
+                                                    />
+                                                    <span className="ml-3 text-gray-700">{opt}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {q.questionType === 'SHORT_ANSWER' && (
+                                        <textarea 
+                                            rows={3} 
+                                            placeholder="Type your answer..." 
+                                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
+                                            value={testAnswers[q.id] || ''}
+                                            onChange={(e) => handleAnswerChange(q.id, e.target.value)}
+                                        />
+                                    )}
+                                </div>
+                            </div>
+                        ))}
                         <div className="flex justify-end pt-4 pb-12">
                             <button 
                                 onClick={handleSubmitTest}
@@ -470,10 +486,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             
             <div className="flex items-center space-x-4">
                 {onNavigateToLanding && (
-                    <button 
-                        onClick={onNavigateToLanding} 
-                        className="flex items-center space-x-1 text-gray-500 hover:text-red-600 text-sm font-medium transition-colors"
-                    >
+                    <button onClick={onNavigateToLanding} className="flex items-center space-x-1 text-gray-500 hover:text-red-600 text-sm font-medium transition-colors">
                         <Home className="w-4 h-4" />
                         <span>Home</span>
                     </button>
@@ -580,48 +593,91 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           </div>
         )}
 
-        {/* Tests Tab */}
+        {/* Tests Tab (SEPARATED) */}
         {activeTab === 'tests' && (
-          <div className="space-y-6 animate-in fade-in">
-            <h2 className="text-2xl font-bold text-black">Available Tests</h2>
-            {availableTests.length === 0 ? (
-              <div className="text-center py-12">
-                <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600">No tests available at the moment.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {availableTests.map((test) => {
-                  const isOpen = true; 
-                  return (
-                    <div key={test.id} className="bg-white border-l-2 border-red-600 rounded-lg shadow-md p-6 hover:shadow-xl transition-shadow flex flex-col justify-between">
-                      <div>
-                          <div className="flex items-center mb-3">
-                            <Award className="w-6 h-6 text-red-600 mr-2" />
-                            <h3 className="text-lg font-semibold text-gray-800">{test.title}</h3>
-                          </div>
-                          
-                          <p className="text-sm text-gray-600 mb-4 line-clamp-2">{test.description || "No description."}</p>
-                          
-                          <div className="space-y-1 mb-4">
-                             {/* ✅ FIX: Use 'timeLimitInMinutes' instead of 'duration' */}
-                             <p className="text-xs text-gray-500">Duration: <span className="font-medium text-gray-700">{test.timeLimitInMinutes ? `${test.timeLimitInMinutes} mins` : 'Untimed'}</span></p>
-                             <p className="text-xs text-gray-500">Marks: <span className="font-medium text-gray-700">{test.totalMarks}</span></p>
-                          </div>
-                      </div>
-                      
-                      <button
-                        onClick={() => handleStartTest(test)}
-                        disabled={!isOpen}
-                        className="w-full bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors text-sm disabled:opacity-50"
-                      >
-                          Start Test
-                      </button>
+          <div className="space-y-12 animate-in fade-in">
+            
+            {/* PENDING TESTS */}
+            <div className="space-y-6">
+                <div className="flex items-center gap-3">
+                    <div className="bg-red-100 p-2 rounded-lg">
+                        <Clock className="w-6 h-6 text-red-600"/>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                    <h2 className="text-2xl font-bold text-black">Available Tests</h2>
+                </div>
+                
+                {pendingTests.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500 bg-white rounded-xl border border-gray-200 border-dashed">
+                    <p>No new tests to write.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {pendingTests.map((test) => (
+                        <div key={test.id} className="bg-white border-l-4 border-red-600 rounded-lg shadow-md p-6 hover:shadow-xl transition-shadow flex flex-col justify-between">
+                          <div>
+                              <div className="flex items-center mb-3">
+                                <Award className="w-6 h-6 text-red-600 mr-2" />
+                                <h3 className="text-lg font-semibold text-gray-800">{test.title}</h3>
+                              </div>
+                              <p className="text-sm text-gray-600 mb-4 line-clamp-2">{test.description || "No description."}</p>
+                              <div className="space-y-1 mb-4">
+                                 <p className="text-xs text-gray-500">Duration: <span className="font-medium text-gray-700">{test.timeLimitInMinutes ? `${test.timeLimitInMinutes} mins` : 'Untimed'}</span></p>
+                                 <p className="text-xs text-gray-500">Marks: <span className="font-medium text-gray-700">{test.totalMarks}</span></p>
+                              </div>
+                          </div>
+                          <button
+                            onClick={() => handleStartTest(test)}
+                            className="w-full bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors text-sm font-medium"
+                          >
+                              Start Test
+                          </button>
+                        </div>
+                    ))}
+                  </div>
+                )}
+            </div>
+
+            {/* COMPLETED TESTS */}
+            <div className="space-y-6">
+                <div className="flex items-center gap-3">
+                    <div className="bg-green-100 p-2 rounded-lg">
+                        <CheckCircle className="w-6 h-6 text-green-600"/>
+                    </div>
+                    <h2 className="text-2xl font-bold text-black">Completed Tests</h2>
+                </div>
+
+                {completedTests.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500 bg-white rounded-xl border border-gray-200 border-dashed">
+                    <p>You haven't completed any tests yet.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {completedTests.map((test) => {
+                        // Find the attempt to display score
+                        const attempt = myQuizAttempts.find(a => String(a.quizId) === String(test.id));
+                        return (
+                            <div key={test.id} className="bg-gray-50 border border-gray-200 rounded-lg p-6 flex flex-col justify-between opacity-80 hover:opacity-100 transition">
+                              <div>
+                                  <div className="flex items-center justify-between mb-3">
+                                    <h3 className="text-lg font-semibold text-gray-700">{test.title}</h3>
+                                    <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold">Completed</span>
+                                  </div>
+                                  <div className="mt-4 bg-white p-3 rounded border border-gray-200 text-center">
+                                     <p className="text-xs text-gray-500 uppercase font-bold">Your Score</p>
+                                     <p className="text-2xl font-bold text-gray-900">
+                                        {attempt?.score} / {attempt?.totalMarks}
+                                     </p>
+                                  </div>
+                              </div>
+                              <button disabled className="w-full mt-4 bg-gray-200 text-gray-500 px-4 py-2 rounded text-sm font-medium cursor-not-allowed">
+                                  Already Submitted
+                              </button>
+                            </div>
+                        );
+                    })}
+                  </div>
+                )}
+            </div>
           </div>
         )}
 
