@@ -47,7 +47,6 @@ const AssignmentSubmitModal: React.FC<{
     formData.append('file', file);
     formData.append('comments', comments);
     
-    // Note: Update URL if your backend controller path is different
     fetch('https://b-t-backend-production-1580.up.railway.app/api/submissions/assignment', { 
       method: 'POST',
       body: formData,
@@ -176,7 +175,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
       const config = { headers: { Authorization: `Bearer ${token}` } };
 
-const [
+      const [
         coursesRes, 
         modulesRes, 
         lessonsRes, 
@@ -184,7 +183,7 @@ const [
         assignmentsRes, 
         submissionsRes,
         usersRes,
-        messagesRes // ✅ ADDED
+        messagesRes
       ] = await Promise.all([
         axios.get(`${API_BASE_URL}/courses`, config).catch(() => ({ data: [] })),
         axios.get(`${API_BASE_URL}/modules`, config).catch(() => ({ data: [] })),
@@ -193,15 +192,11 @@ const [
         axios.get(`${API_BASE_URL}/assignments`, config).catch(() => ({ data: [] })),
         axios.get(`${API_BASE_URL}/submissions/assignment`, config).catch(() => ({ data: [] })),
         axios.get(`${API_BASE_URL}/users`, config).catch(() => ({ data: [] })),
+        // ✅ FETCH USER MESSAGES (Fixed Endpoint)
         axios.get(`${API_BASE_URL}/messages/user/${currentUserId}`, config).catch(() => ({ data: [] })) 
       ]);
 
-      // ... existing set state calls ...
-      
-      // ✅ ADD THIS LINE AFTER SETTING USERS:
-      setMessages(Array.isArray(messagesRes.data) ? messagesRes.data : []);
-
-      // ✅ Safe Fallback: If any response is null/undefined/error, use empty array
+      // ✅ Safe Fallback
       setCourses(Array.isArray(coursesRes.data) ? coursesRes.data : []);
       setModules(Array.isArray(modulesRes.data) ? modulesRes.data : []);
       setStudyMaterials(Array.isArray(lessonsRes.data) ? lessonsRes.data : []);
@@ -221,38 +216,27 @@ const [
       setLoading(false);
     }
   };
-  // --- LIVE CHAT: POLLING (Auto-Refresh Messages) ---
-  useEffect(() => {
-    // 1. Only run if we have a logged-in user
-    if (!user?.id) return;
-
-    const pollMessages = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
-        // 2. Fetch messages silently (no loading spinner)
-        const res = await axios.get(`${API_BASE_URL}/messages/user/${user.id}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-
-        // 3. Update the chat list
-        setMessages(Array.isArray(res.data) ? res.data : []);
-      } catch (err) {
-        // Ignore errors during polling to avoid console spam
-      }
-    };
-
-    // 4. Run this function every 3000ms (3 seconds)
-    const intervalId = setInterval(pollMessages, 3000);
-
-    // 5. Cleanup: Stop the timer if the user leaves the dashboard
-    return () => clearInterval(intervalId);
-  }, [user?.id]); // Re-run if the user ID changes
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  // --- LIVE CHAT POLLING (Auto-Refresh) ---
+  useEffect(() => {
+    if (!user?.id) return;
+    const pollMessages = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const res = await axios.get(`${API_BASE_URL}/messages/user/${user.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setMessages(Array.isArray(res.data) ? res.data : []);
+      } catch (err) { /* Silent fail */ }
+    };
+    const intervalId = setInterval(pollMessages, 3000); 
+    return () => clearInterval(intervalId);
+  }, [user?.id]);
 
   // --- Filtering Logic ---
   const enrolledCourseIds = useMemo(() => courses.map(c => String(c.id)), [courses]);
@@ -261,7 +245,7 @@ const [
     return studyMaterials.filter(mat => {
         const module = modules.find(m => String(m.id) === String(mat.moduleId));
         
-        // ✅ FIX: Exclude 'QUIZ' and 'ASSIGNMENT' types from Study Materials tab
+        // Exclude 'QUIZ' and 'ASSIGNMENT' types from Study Materials tab
         const materialType = ((mat as any).contentType || mat.type || '').toUpperCase();
         const isHiddenType = materialType === 'QUIZ' || materialType === 'ASSIGNMENT';
 
@@ -278,22 +262,21 @@ const [
   }, [assignments, enrolledCourseIds]);
 
 
-  // --- CHAT LOGIC ---
- const handleSendMessage = async (receiverId: string, messageContent: string) => {
+  // --- CHAT SEND LOGIC (Fixed for Backend) ---
+  const handleSendMessage = async (receiverId: string, messageContent: string) => {
     try {
       const token = localStorage.getItem('token');
+      // ✅ Removed 'message' field to prevent backend 500 error
       const payload = {
         sender: { id: user?.id },
         receiver: { id: receiverId },
         content: messageContent 
-        // ❌ REMOVED: message: messageContent (This line was crashing the backend)
       };
 
       const res = await axios.post(`${API_BASE_URL}/messages`, payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      // Optimistic Update
       setMessages(prev => [...prev, res.data]);
     } catch (error) {
       console.error("Failed to send message", error);
@@ -366,7 +349,10 @@ const [
             <header className="bg-white border-b border-gray-200 sticky top-0 z-30 px-6 py-4 flex justify-between items-center shadow-sm">
                 <div>
                     <h2 className="text-xl font-bold text-gray-800">{activeTest.title}</h2>
-                    <p className="text-sm text-gray-500">{testQuestions.length} Questions • {activeTest.duration || 'Untimed'}</p>
+                    {/* ✅ FIX: Use 'timeLimitInMinutes' instead of 'duration' */}
+                    <p className="text-sm text-gray-500">
+                        {testQuestions.length} Questions • {activeTest.timeLimitInMinutes ? `${activeTest.timeLimitInMinutes} mins` : 'Untimed'}
+                    </p>
                 </div>
                 {!testResult && (
                     <button onClick={closeTestPlayer} className="text-gray-500 hover:text-red-600 font-medium">Exit Test</button>
@@ -618,7 +604,8 @@ const [
                           <p className="text-sm text-gray-600 mb-4 line-clamp-2">{test.description || "No description."}</p>
                           
                           <div className="space-y-1 mb-4">
-                             <p className="text-xs text-gray-500">Duration: <span className="font-medium text-gray-700">{test.duration || 60} mins</span></p>
+                             {/* ✅ FIX: Use 'timeLimitInMinutes' instead of 'duration' */}
+                             <p className="text-xs text-gray-500">Duration: <span className="font-medium text-gray-700">{test.timeLimitInMinutes ? `${test.timeLimitInMinutes} mins` : 'Untimed'}</span></p>
                              <p className="text-xs text-gray-500">Marks: <span className="font-medium text-gray-700">{test.totalMarks}</span></p>
                           </div>
                       </div>

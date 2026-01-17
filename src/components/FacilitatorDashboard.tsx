@@ -238,13 +238,14 @@ const handleSendMessage = async (receiverId: string, messageContent: string) => 
         {/* CONTENT */}
         <div className="space-y-6">
           
-          {/* MODULES TAB */}
+{/* MODULES TAB */}
           {activeTab === 'modules' && (
-            <div className="space-y-6">
+            <div className="space-y-8">
+               {/* Header and Create Button */}
                <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                    <div>
                       <h2 className="text-xl font-bold text-gray-900">Modules</h2>
-                      <p className="text-sm text-gray-500">Manage content for your {myCourses.length} courses</p>
+                      <p className="text-sm text-gray-500">Manage content organized by course</p>
                    </div>
                    <button 
                       onClick={() => setShowCreateModule(true)} 
@@ -254,27 +255,53 @@ const handleSendMessage = async (receiverId: string, messageContent: string) => 
                    </button>
                </div>
 
-               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in">
-                  {myModules.length === 0 && (
-                    <div className="col-span-3 text-center py-12 text-gray-500 border-2 border-dashed rounded-lg">
-                      You have no modules. Create one to start adding lessons.
+               {/* ✅ NEW: Group Modules by Course */}
+               {myCourses.map(course => {
+                  // Filter modules that belong to this course
+                  const courseModules = myModules.filter(m => String(m.courseId) === String(course.id));
+
+                  // Skip rendering this course section if it has no modules
+                  if (courseModules.length === 0) return null;
+
+                  return (
+                    <div key={course.id} className="space-y-4 animate-in fade-in">
+                        {/* Course Title Header */}
+                        <div className="flex items-center gap-3 border-b-2 border-gray-200 pb-2 mt-4">
+                            <BookOpen className="w-6 h-6 text-gray-700" />
+                            <h3 className="text-xl font-bold text-gray-800">{course.title}</h3>
+                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-medium">
+                                {courseModules.length} Modules
+                            </span>
+                        </div>
+
+                        {/* Grid of Modules for this Course */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {courseModules.map((module) => (
+                                <div key={module.id} className="bg-white shadow-md rounded-xl overflow-hidden hover:shadow-xl transition border border-gray-100 flex flex-col">
+                                    <div className="h-32 bg-slate-50 flex items-center justify-center border-b border-gray-100">
+                                        <BookOpen className="text-red-200 w-12 h-12"/>
+                                    </div>
+                                    <div className="p-6 flex-1 flex flex-col">
+                                        <h3 className="text-lg font-bold text-gray-900 mb-2">{module.title}</h3>
+                                        <p className="text-sm text-gray-600 line-clamp-2 mb-4 flex-1">{module.description}</p>
+                                        <button onClick={() => setSelectedModuleForContent(module)} className="w-full bg-white border border-red-600 text-red-600 py-2 rounded-lg hover:bg-red-50 transition text-sm font-medium flex items-center justify-center space-x-2">
+                                            <Upload className="w-4 h-4" /> <span>Manage Content</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                  )}
-                  {myModules.map((module) => (
-                      <div key={module.id} className="bg-white shadow-md rounded-xl overflow-hidden hover:shadow-xl transition border border-gray-100 flex flex-col">
-                          <div className="h-32 bg-slate-50 flex items-center justify-center border-b border-gray-100">
-                              <BookOpen className="text-red-200 w-12 h-12"/>
-                          </div>
-                          <div className="p-6 flex-1 flex flex-col">
-                              <h3 className="text-lg font-bold text-gray-900 mb-2">{module.title}</h3>
-                              <p className="text-sm text-gray-600 line-clamp-2 mb-4 flex-1">{module.description}</p>
-                              <button onClick={() => setSelectedModuleForContent(module)} className="w-full bg-white border border-red-600 text-red-600 py-2 rounded-lg hover:bg-red-50 transition text-sm font-medium flex items-center justify-center space-x-2">
-                                <Upload className="w-4 h-4" /> <span>Manage Content</span>
-                              </button>
-                          </div>
-                      </div>
-                  ))}
-               </div>
+                  );
+               })}
+
+               {/* Fallback if you have absolutely no modules in any course */}
+               {myModules.length === 0 && (
+                    <div className="text-center py-12 text-gray-500 border-2 border-dashed rounded-lg bg-gray-50">
+                      <p>You have no modules created yet.</p>
+                      <p className="text-sm mt-1">Click "Create Module" to get started.</p>
+                    </div>
+               )}
             </div>
           )}
 

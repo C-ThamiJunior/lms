@@ -1,187 +1,258 @@
-// src/components/GradingCenter.tsx
-import React, { useState } from "react";
-import { 
-  Assignment, 
-  AssignmentSubmission, 
-  User, 
-  Course 
-} from "../types/lms";
+import React, { useState, useEffect } from 'react';
+import { Award, ChevronDown } from 'lucide-react';
+import { Course, Module, Test, Assignment, User, TestResult, AssignmentSubmission } from '../../types/lms';
 
 interface GradingCenterProps {
-  submissions: AssignmentSubmission[];
-  assignments: Assignment[];
-  users: User[];
-  courses: Course[];
-  onGradeSubmission: (submissionId: number, grade: number, feedback: string) => Promise<void>;
+    courses: Course[];
+    modules: Module[];
+    tests: Test[];
+    assignments: Assignment[];
+    users: User[];
+    testResults: TestResult[];
+    assignmentSubmissions: AssignmentSubmission[];
+    onDataMutated: () => void;
 }
 
-export const GradingCenter: React.FC<GradingCenterProps> = ({
-  submissions,
-  assignments,
-  users,
-  courses,
-  onGradeSubmission
+const API_BASE_URL = 'https://b-t-backend-production-1580.up.railway.app/api';
+
+export const GradingCenter: React.FC<GradingCenterProps> = ({ 
+    courses, modules, tests, assignments, users, testResults, assignmentSubmissions, onDataMutated 
 }) => {
-  const [selectedSubmission, setSelectedSubmission] = useState<AssignmentSubmission | null>(null);
-  const [grade, setGrade] = useState<number>(0);
-  const [feedback, setFeedback] = useState<string>("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+    const [selectedCourseId, setSelectedCourseId] = useState("");
+    const [selectedModuleId, setSelectedModuleId] = useState("");
+    const [gradingType, setGradingType] = useState<'test' | 'assignment'>('test');
+    const [selectedAssessmentId, setSelectedAssessmentId] = useState("");
+    const [studentSearch, setStudentSearch] = useState("");
+    const [gradingLoading, setGradingLoading] = useState<string | null>(null);
 
-  // Helper to get names
-  const getStudentName = (studentId: string) => {
-    const student = users.find((u) => u.id === studentId);
-    return student ? `${student.firstName} ${student.lastName}` : "Unknown Student";
-  };
+    // --- DEBUGGING LOGS (Check Console F12 if empty) ---
+    useEffect(() => {
+        console.log("GradingCenter Loaded Users:", users);
+        if (users.length > 0) {
+            console.log("Sample User Role:", users[0].role);
+            console.log("Sample User Name Data:", users[0].firstname, users[0].surname, users[0].name);
+        }
+    }, [users]);
 
-  const getAssignmentTitle = (assignmentId: number) => {
-    return assignments.find((a) => a.id === assignmentId)?.title || "Unknown Assignment";
-  };
+    // Derived State for Dropdowns
+    const gradingModules = modules.filter(m => String(m.courseId) === String(selectedCourseId));
+    const gradingAssessments = gradingType === 'test' 
+        ? tests.filter(t => String(t.moduleId) === String(selectedModuleId))
+        : assignments.filter(a => String(a.moduleId) === String(selectedModuleId));
+    
+    // ✅ ROBUST STUDENT FILTER
+    const students = users.filter(u => {
+        // 1. Check Role (Handle nulls, uppercase, lowercase)
+        const role = String(u.role || '').toUpperCase();
+        const isStudent = role === 'STUDENT';
 
-  const handleOpenGradeModal = (submission: AssignmentSubmission) => {
-    setSelectedSubmission(submission);
-    setGrade(submission.grade || 0);
-    setFeedback(submission.feedback || "");
-  };
+        // 2. Check Search (Handle firstname/surname OR name)
+        const search = studentSearch.toLowerCase();
+        
+        // Construct full name safely
+        const fullName = u.firstname 
+            ? `${u.firstname} ${u.surname || ''}` 
+            : (u.name || '');
+            
+        const matchesSearch = 
+            fullName.toLowerCase().includes(search) ||
+            (u.email && u.email.toLowerCase().includes(search));
 
-  const handleSubmitGrade = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedSubmission) return;
+        return isStudent && matchesSearch;
+    });
 
-    setIsSubmitting(true);
-    try {
-      await onGradeSubmission(selectedSubmission.id, grade, feedback);
-      setSelectedSubmission(null); // Close modal
-    } catch (error) {
-      alert("Failed to save grade. Please try again.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    console.log("Filtered Students Count:", students.length);
 
-  return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Grading Center</h2>
+    // --- Action Handler ---
+    const handleGrade = async (studentId: string, currentScore: number | undefined) => {
+        const newScoreStr = prompt("Enter grade (0-100):", currentScore?.toString());
+        if (newScoreStr === null) return; // Cancelled
+        const newScore = parseInt(newScoreStr);
+        if (isNaN(newScore)) return alert("Invalid number");
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assignment</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date Submitted</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {submissions.map((sub) => (
-              <tr key={sub.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {getStudentName(sub.studentId)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {getAssignmentTitle(sub.assignmentId)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {new Date(sub.submissionDate).toLocaleDateString()}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  {sub.grade !== null ? (
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                      Graded ({sub.grade}%)
-                    </span>
-                  ) : (
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                      Pending
-                    </span>
-                  )}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <button
-                    onClick={() => handleOpenGradeModal(sub)}
-                    className="text-indigo-600 hover:text-indigo-900"
-                  >
-                    {sub.grade !== null ? "Edit Grade" : "Grade Now"}
-                  </button>
-                  {sub.fileUrl && (
-                    <a
-                      href={sub.fileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="ml-4 text-blue-600 hover:text-blue-900"
-                    >
-                      View File
-                    </a>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {submissions.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
-                  No submissions found.
-                </td>
-              </tr>
+        const feedback = prompt("Enter feedback:", "Good job!");
+        
+        setGradingLoading(studentId);
+        const token = localStorage.getItem('token');
+
+        try {
+            if (gradingType === 'test') {
+                // 1. Find existing attempt to update
+                const existingResult = testResults.find(r => 
+                    String(r.testId) === String(selectedAssessmentId) && 
+                    String(r.studentId) === String(studentId)
+                );
+
+                // 2. Construct Payload
+                const payload = {
+                    id: existingResult?.id, 
+                    quiz: { id: selectedAssessmentId },
+                    learner: { id: studentId }, 
+                    student: { id: studentId }, 
+                    score: newScore,
+                    totalMarks: 100, 
+                    feedback: feedback
+                };
+
+                await fetch(`${API_BASE_URL}/attempts/quiz`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(payload)
+                });
+
+            } else {
+                // Assignment Grading
+                const submission = assignmentSubmissions.find(s => 
+                    String(s.assignmentId) === String(selectedAssessmentId) && 
+                    String(s.studentId) === String(studentId)
+                );
+                
+                if (!submission) {
+                    alert("Student has not submitted this assignment yet. Cannot grade.");
+                    setGradingLoading(null);
+                    return;
+                }
+
+                await fetch(`${API_BASE_URL}/submissions/assignment/${submission.id}/grade`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({
+                        grade: newScore,
+                        feedback: feedback
+                    })
+                });
+            }
+            
+            // Refresh Data
+            onDataMutated();
+            alert("Grade saved successfully!");
+
+        } catch (error) {
+            console.error("Grading failed", error);
+            alert("Failed to save grade. Check console.");
+        } finally {
+            setGradingLoading(null);
+        }
+    };
+
+    return (
+        <div className="bg-white p-8 rounded-xl shadow-md border border-gray-100 animate-in fade-in">
+            <div className="flex items-center gap-3 mb-8 pb-4 border-b border-gray-100">
+                <div className="p-2 bg-red-100 rounded-lg"><Award className="text-red-600 w-6 h-6"/></div>
+                <div>
+                    <h2 className="text-xl font-bold text-gray-900">Grading Center</h2>
+                    <p className="text-sm text-gray-500">Filter by course and assessment to grade students</p>
+                </div>
+            </div>
+            
+            {/* Filters */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">1. Select Course</label>
+                    <div className="relative">
+                        <select className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg appearance-none" value={selectedCourseId} onChange={e => { setSelectedCourseId(e.target.value); setSelectedModuleId(""); }}>
+                            <option value="">-- Choose Course --</option>
+                            {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-3.5 w-4 h-4 text-gray-400 pointer-events-none"/>
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">2. Select Module</label>
+                    <div className="relative">
+                        <select className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg appearance-none" value={selectedModuleId} onChange={e => setSelectedModuleId(e.target.value)} disabled={!selectedCourseId}>
+                            <option value="">-- Choose Module --</option>
+                            {gradingModules.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-3.5 w-4 h-4 text-gray-400 pointer-events-none"/>
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">3. Type</label>
+                    <div className="relative">
+                        <select className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg appearance-none" value={gradingType} onChange={e => setGradingType(e.target.value as any)}>
+                            <option value="test">Test</option>
+                            <option value="assignment">Assignment</option>
+                        </select>
+                        <ChevronDown className="absolute right-3 top-3.5 w-4 h-4 text-gray-400 pointer-events-none"/>
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">4. Assessment</label>
+                    <div className="relative">
+                        <select className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg appearance-none" value={selectedAssessmentId} onChange={e => setSelectedAssessmentId(e.target.value)} disabled={!selectedModuleId}>
+                            <option value="">-- Choose --</option>
+                            {gradingAssessments.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-3.5 w-4 h-4 text-gray-400 pointer-events-none"/>
+                    </div>
+                </div>
+            </div>
+
+            {/* List */}
+            {selectedAssessmentId ? (
+                <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                    <div className="bg-gray-50 px-6 py-3 border-b border-gray-200 flex justify-between text-xs font-semibold text-gray-500 uppercase">
+                        <span>Student</span>
+                        <div className="flex gap-12 pr-4"><span>Status</span><span>Grade</span><span>Action</span></div>
+                    </div>
+                    <div className="divide-y divide-gray-50">
+                        {students.map((student) => {
+                            // Find existing grade safely
+                            const result = gradingType === 'test' 
+                                ? testResults.find(r => String(r.testId) === String(selectedAssessmentId) && String(r.studentId) === String(student.id))
+                                : assignmentSubmissions.find(s => String(s.assignmentId) === String(selectedAssessmentId) && String(s.studentId) === String(student.id));
+                            
+                            // Handle both 'grade' (assignments) and 'score' (tests)
+                            const score = result ? ((result as any).grade ?? result.score) : undefined;
+                            const hasSubmitted = !!result;
+
+                            // Safe Name Display
+                            const displayName = student.firstname 
+                                ? `${student.firstname} ${student.surname || ''}` 
+                                : (student.name || 'Unknown Student');
+
+                            return (
+                                <div key={student.id} className="px-6 py-4 flex items-center justify-between hover:bg-red-50 transition-colors">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">
+                                            {displayName.charAt(0).toUpperCase()}
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-gray-900">{displayName}</p>
+                                            <p className="text-xs text-gray-500">{student.email}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-12">
+                                        <span className={`text-xs px-2.5 py-1 rounded-full border ${hasSubmitted ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                                            {hasSubmitted ? 'Submitted' : 'Pending'}
+                                        </span>
+                                        <span className="font-bold text-gray-800 w-16 text-right">
+                                            {score !== undefined ? score : '-'}
+                                        </span>
+                                        <button 
+                                            onClick={() => handleGrade(student.id, score)}
+                                            disabled={gradingLoading === student.id}
+                                            className="text-sm border border-gray-300 px-4 py-1.5 rounded-lg hover:bg-red-600 hover:text-white hover:border-red-600 transition-all w-24"
+                                        >
+                                            {gradingLoading === student.id ? 'Saving...' : (score !== undefined ? 'Edit' : 'Grade')}
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        {students.length === 0 && (
+                            <div className="p-6 text-center text-gray-500 flex flex-col items-center">
+                                <p className="font-medium text-gray-900">No students found.</p>
+                                <p className="text-sm">Total Users loaded: {users.length}</p>
+                                <p className="text-xs mt-2 text-red-400">(Check console logs for data details)</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ) : (
+                <div className="text-center py-12 text-gray-400">Select an assessment to begin grading</div>
             )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Grade Modal */}
-      {selectedSubmission && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="bg-white p-8 rounded-md shadow-xl w-96">
-            <h3 className="text-lg font-bold mb-4">Grade Submission</h3>
-            <p className="text-sm text-gray-500 mb-4">
-              Student: {getStudentName(selectedSubmission.studentId)}<br />
-              Assignment: {getAssignmentTitle(selectedSubmission.assignmentId)}
-            </p>
-            <form onSubmit={handleSubmitGrade}>
-              <div className="mb-4">
-                <label className="block text-gray-700 text-sm font-bold mb-2">
-                  Grade (0-100)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={grade}
-                  onChange={(e) => setGrade(Number(e.target.value))}
-                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                  required
-                />
-              </div>
-              <div className="mb-4">
-                <label className="block text-gray-700 text-sm font-bold mb-2">
-                  Feedback
-                </label>
-                <textarea
-                  value={feedback}
-                  onChange={(e) => setFeedback(e.target.value)}
-                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                  rows={4}
-                />
-              </div>
-              <div className="flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedSubmission(null)}
-                  className="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300"
-                >
-                  {isSubmitting ? "Saving..." : "Save Grade"}
-                </button>
-              </div>
-            </form>
-          </div>
         </div>
-      )}
-    </div>
-  );
+    );
 };
