@@ -29,10 +29,21 @@ export const ChatSystem: React.FC<ChatSystemProps> = ({
     return u.email || 'Unknown User';
   };
 
+  // ✅ FIX: Force timestamps to be treated as UTC
+  // If the backend sends "2024-01-01T10:00", we make it "2024-01-01T10:00Z"
+  // This tells the browser: "This is UTC time, please show it in the user's local time."
+  const getUtcDate = (dateString?: string) => {
+    if (!dateString) return new Date(0);
+    // If it's a standard ISO string without timezone info, append Z
+    if (dateString.includes('T') && !dateString.endsWith('Z') && !dateString.includes('+')) {
+      return new Date(dateString + 'Z');
+    }
+    return new Date(dateString);
+  };
+
   // Filter out the current user from the list
   const chatUsers = users.filter(u => String(u.id) !== String(currentUser.id));
 
-  // Search filter
   const filteredUsers = chatUsers.filter(u => {
     const name = getUserName(u).toLowerCase();
     const email = (u.email || '').toLowerCase();
@@ -40,8 +51,6 @@ export const ChatSystem: React.FC<ChatSystemProps> = ({
     return name.includes(term) || email.includes(term);
   });
 
-  // ✅ FIX: Correctly filter messages using nested 'sender.id' and 'receiver.id'
-  // Also checks 'sentAt' for sorting (fallback to 'timestamp' if needed)
   const conversation = selectedUser
     ? messages.filter(m => {
         const senderId = m.sender?.id || (m as any).senderId;
@@ -52,9 +61,8 @@ export const ChatSystem: React.FC<ChatSystemProps> = ({
           (String(senderId) === String(selectedUser.id) && String(receiverId) === String(currentUser.id))
         );
       }).sort((a, b) => {
-        const dateA = new Date(a.sentAt || a.timestamp || 0).getTime();
-        const dateB = new Date(b.sentAt || b.timestamp || 0).getTime();
-        return dateA - dateB;
+        // ✅ FIX: Use getUtcDate for sorting
+        return getUtcDate(a.sentAt || a.timestamp).getTime() - getUtcDate(b.sentAt || b.timestamp).getTime();
       })
     : [];
 
@@ -73,7 +81,8 @@ export const ChatSystem: React.FC<ChatSystemProps> = ({
   const formatTime = (dateString?: string) => {
     if (!dateString) return '';
     try {
-      return new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      // ✅ FIX: Use getUtcDate for display
+      return getUtcDate(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } catch (e) {
       return '';
     }
@@ -151,7 +160,6 @@ export const ChatSystem: React.FC<ChatSystemProps> = ({
                 </div>
               ) : (
                 conversation.map((msg, idx) => {
-                  // ✅ FIX: Use optional chaining for nested sender object
                   const senderId = msg.sender?.id || (msg as any).senderId;
                   const isMe = String(senderId) === String(currentUser.id);
                   
@@ -160,10 +168,8 @@ export const ChatSystem: React.FC<ChatSystemProps> = ({
                       <div className={`max-w-[70%] px-4 py-2 rounded-lg text-sm shadow-sm ${
                         isMe ? 'bg-red-600 text-white rounded-br-none' : 'bg-white text-gray-800 border border-gray-200 rounded-bl-none'
                       }`}>
-                        {/* ✅ FIX: Use 'content' (from backend) or fallback to 'message' */}
                         <p>{msg.content || msg.message}</p>
                         <p className={`text-[10px] mt-1 text-right ${isMe ? 'text-red-100' : 'text-gray-400'}`}>
-                          {/* ✅ FIX: Use 'sentAt' (from backend) or fallback to 'timestamp' */}
                           {formatTime(msg.sentAt || msg.timestamp)}
                         </p>
                       </div>
