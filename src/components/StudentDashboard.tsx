@@ -12,8 +12,8 @@ import {
 } from '../types/lms';
 import { 
   BookOpen, Home, FileText, Award, MessageCircle, 
-  Users, Play, X, LogOut, Video, File, Link as LinkIcon,
-  Clock, CheckCircle, ChevronRight, AlertCircle
+  Users, Video, Link as LinkIcon, File,
+  CheckCircle, ChevronRight, X
 } from 'lucide-react';
 import { ChatSystem } from './ChatSystem';
 import { DiscussionForum } from './DiscussionForum';
@@ -42,12 +42,12 @@ const AssignmentSubmitModal: React.FC<{
 
     setIsSubmitting(true);
     const formData = new FormData();
-    formData.append('assignmentId', assignment.id.toString()); // Ensure string
+    formData.append('assignmentId', assignment.id.toString());
     formData.append('studentId', currentUser.id.toString());
     formData.append('file', file);
     formData.append('comments', comments);
     
-    // Note: Ensure your backend uses this URL, or update to match your Controller
+    // Note: Update URL if your backend controller path is different
     fetch('https://b-t-backend-production-1580.up.railway.app/api/submissions/assignment', { 
       method: 'POST',
       body: formData,
@@ -176,38 +176,44 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
       const config = { headers: { Authorization: `Bearer ${token}` } };
 
-      const [
-        coursesRes, // ✅ CHANGED: Fetching Courses Directly instead of Enrollments
+const [
+        coursesRes, 
         modulesRes, 
         lessonsRes, 
         quizzesRes, 
         assignmentsRes, 
         submissionsRes,
-        usersRes
+        usersRes,
+        messagesRes // ✅ ADDED
       ] = await Promise.all([
-        axios.get(`${API_BASE_URL}/courses`, config), // ✅ UPDATED ENDPOINT
-        axios.get(`${API_BASE_URL}/modules`, config),
-        axios.get(`${API_BASE_URL}/lessons`, config),
-        axios.get(`${API_BASE_URL}/quizzes`, config),
-        axios.get(`${API_BASE_URL}/assignments`, config),
-        axios.get(`${API_BASE_URL}/submissions/assignment`, config),
-        axios.get(`${API_BASE_URL}/users`, config)
+        axios.get(`${API_BASE_URL}/courses`, config).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/modules`, config).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/lessons`, config).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/quizzes`, config).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/assignments`, config).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/submissions/assignment`, config).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/users`, config).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/messages/user/${currentUserId}`, config).catch(() => ({ data: [] })) 
       ]);
 
-      // ✅ Safe Fallback: If coursesRes is null/undefined/error, use empty array
-      const allCourses = Array.isArray(coursesRes.data) ? coursesRes.data : [];
-      setCourses(allCourses);
+      // ... existing set state calls ...
       
-      setModules(modulesRes.data);
-      setStudyMaterials(lessonsRes.data);
-      setTests(quizzesRes.data);
-      setAssignments(assignmentsRes.data);
+      // ✅ ADD THIS LINE AFTER SETTING USERS:
+      setMessages(Array.isArray(messagesRes.data) ? messagesRes.data : []);
+
+      // ✅ Safe Fallback: If any response is null/undefined/error, use empty array
+      setCourses(Array.isArray(coursesRes.data) ? coursesRes.data : []);
+      setModules(Array.isArray(modulesRes.data) ? modulesRes.data : []);
+      setStudyMaterials(Array.isArray(lessonsRes.data) ? lessonsRes.data : []);
+      setTests(Array.isArray(quizzesRes.data) ? quizzesRes.data : []);
+      setAssignments(Array.isArray(assignmentsRes.data) ? assignmentsRes.data : []);
       
-      const mySubmissions = submissionsRes.data.filter((s: any) => 
+      const mySubmissions = Array.isArray(submissionsRes.data) ? submissionsRes.data.filter((s: any) => 
          String(s.learnerId) === String(currentUserId) || String(s.studentId) === String(currentUserId)
-      );
+      ) : [];
       setAssignmentSubmissions(mySubmissions);
-      setUsersList(usersRes.data);
+      setUsersList(Array.isArray(usersRes.data) ? usersRes.data : []);
+      setMessages(Array.isArray(messagesRes.data) ? messagesRes.data : []);
 
     } catch (err) {
       console.error("Failed to load student data", err);
@@ -226,7 +232,12 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   const availableMaterials = useMemo(() => {
     return studyMaterials.filter(mat => {
         const module = modules.find(m => String(m.id) === String(mat.moduleId));
-        return module && enrolledCourseIds.includes(String(module.courseId));
+        
+        // ✅ FIX: Exclude 'QUIZ' and 'ASSIGNMENT' types from Study Materials tab
+        const materialType = ((mat as any).contentType || mat.type || '').toUpperCase();
+        const isHiddenType = materialType === 'QUIZ' || materialType === 'ASSIGNMENT';
+
+        return module && enrolledCourseIds.includes(String(module.courseId)) && !isHiddenType;
     });
   }, [studyMaterials, modules, enrolledCourseIds]);
 
@@ -239,8 +250,31 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   }, [assignments, enrolledCourseIds]);
 
 
+  // --- CHAT LOGIC ---
+ const handleSendMessage = async (receiverId: string, messageContent: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      const payload = {
+        sender: { id: user?.id },
+        receiver: { id: receiverId },
+        content: messageContent 
+        // ❌ REMOVED: message: messageContent (This line was crashing the backend)
+      };
+
+      const res = await axios.post(`${API_BASE_URL}/messages`, payload, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      // Optimistic Update
+      setMessages(prev => [...prev, res.data]);
+    } catch (error) {
+      console.error("Failed to send message", error);
+      alert("Failed to send message.");
+    }
+  };
+
+
   // --- TEST PLAYER LOGIC ---
-  // ... (Test Player Logic stays the same) ...
   const handleStartTest = async (test: Test) => {
     setActiveTest(test);
     setTestAnswers({});
@@ -492,7 +526,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                   const module = modules.find(m => String(m.id) === String(material.moduleId));
                   // Icon Selection
                   const getIcon = () => {
-                      const type = material.contentType ? material.contentType.toLowerCase() : 'pdf';
+                      const type = material.contentType ? material.contentType.toLowerCase() : (material.type || 'pdf');
                       if(type.includes('video')) return <Video className="w-5 h-5"/>;
                       if(type.includes('link')) return <LinkIcon className="w-5 h-5"/>;
                       return <File className="w-5 h-5"/>;
@@ -508,7 +542,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                           <div className="flex items-center justify-between mb-2">
                              <h3 className="text-lg font-semibold text-gray-800 line-clamp-1">{material.title}</h3>
                              <span className="text-xs font-medium bg-gray-100 px-2 py-1 rounded text-gray-600 uppercase">
-                                 {material.contentType || 'DOC'}
+                                 {material.contentType || material.type || 'DOC'}
                              </span>
                           </div>
                           <p className="text-sm text-gray-600 mb-4 line-clamp-2">
@@ -632,14 +666,15 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         {/* Chat Tab */}
         {activeTab === 'chat' && (
           <div className="space-y-6 animate-in fade-in">
-            <h2 className="text-2xl font-bold text-black">Chat with Students</h2>
+            <h2 className="text-2xl font-bold text-black">Chat with Instructors & Peers</h2>
             <div className="bg-white p-6 rounded-lg shadow-md">
                  <ChatSystem
                   currentUser={user}
+                  // Pass ALL users (Facilitators + Students), filtering out self
                   users={usersList.filter(u => u.id !== user.id)}
                   messages={messages}
-                  onSendMessage={(receiverId, message) => console.log('Sending', receiverId, message)}
-                  onMarkAsRead={(msgId) => console.log('Reading', msgId)}
+                  onSendMessage={handleSendMessage}
+                  onMarkAsRead={() => {}}
                 />
             </div>
           </div>
