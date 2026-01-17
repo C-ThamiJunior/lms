@@ -100,6 +100,30 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
     fetchData();
   }, []);
 
+  // --- LIVE CHAT: POLLING (Auto-Refresh Messages) ---
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const pollMessages = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        const res = await axios.get(`${API_BASE_URL}/messages/user/${user.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        setMessages(Array.isArray(res.data) ? res.data : []);
+      } catch (err) {
+        // Silent fail
+      }
+    };
+
+    const intervalId = setInterval(pollMessages, 3000); // Poll every 3 seconds
+
+    return () => clearInterval(intervalId);
+  }, [user?.id]);
+
   // Filtering Logic
   const myCourses = useMemo(() => {
     if (!user) return [];

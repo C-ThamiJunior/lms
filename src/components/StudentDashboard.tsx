@@ -221,6 +221,34 @@ const [
       setLoading(false);
     }
   };
+  // --- LIVE CHAT: POLLING (Auto-Refresh Messages) ---
+  useEffect(() => {
+    // 1. Only run if we have a logged-in user
+    if (!user?.id) return;
+
+    const pollMessages = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        // 2. Fetch messages silently (no loading spinner)
+        const res = await axios.get(`${API_BASE_URL}/messages/user/${user.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        // 3. Update the chat list
+        setMessages(Array.isArray(res.data) ? res.data : []);
+      } catch (err) {
+        // Ignore errors during polling to avoid console spam
+      }
+    };
+
+    // 4. Run this function every 3000ms (3 seconds)
+    const intervalId = setInterval(pollMessages, 3000);
+
+    // 5. Cleanup: Stop the timer if the user leaves the dashboard
+    return () => clearInterval(intervalId);
+  }, [user?.id]); // Re-run if the user ID changes
 
   useEffect(() => {
     fetchData();
