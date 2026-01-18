@@ -13,6 +13,8 @@ import { ModuleContentManager } from './modals/ModuleContentManager';
 import { GradingCenter } from './dashboard/GradingCenter';
 import { ModuleCreationModal } from './modals/ModuleCreationModal';
 import { ChatSystem } from './ChatSystem';
+// ✅ 1. Import the new modal
+import { AssignmentCreationModal } from './modals/AssignmentCreationModal';
 
 // Define Props
 interface FacilitatorDashboardProps {
@@ -32,7 +34,7 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
   const [tests, setTests] = useState<Test[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [usersList, setUsersList] = useState<User[]>([]); 
-  const [messages, setMessages] = useState<ChatMessage[]>([]); // ✅ State for messages
+  const [messages, setMessages] = useState<ChatMessage[]>([]); 
   
   const [editingTest, setEditingTest] = useState<Test | null>(null);
   
@@ -42,6 +44,10 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
   const [selectedModuleForContent, setSelectedModuleForContent] = useState<Module | null>(null);
   const [showCreateModule, setShowCreateModule] = useState(false);
   const [showModuleSelector, setShowModuleSelector] = useState(false);
+  
+  // ✅ 2. Add State for Assignment Modal
+  const [showCreateAssignment, setShowCreateAssignment] = useState(false);
+  
   const [loading, setLoading] = useState(true);
 
   // Fetch Data on Mount
@@ -50,17 +56,11 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
       const token = localStorage.getItem('token');
       if (!token) return; 
 
-      // ✅ FIX: Ensure we have the User ID before fetching
-      let currentUserId = user?.id;
       if (!user) {
         const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-            const parsed = JSON.parse(storedUser);
-            setUser(parsed);
-            currentUserId = parsed.id;
-        }
+        if (storedUser) setUser(JSON.parse(storedUser));
       }
-
+      const currentUserId = user?.id || JSON.parse(localStorage.getItem('user') || '{}').id;
       if (!currentUserId) return;
 
       const config = { headers: { Authorization: `Bearer ${token}` } };
@@ -76,11 +76,9 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
         axios.get(`${API_BASE_URL}/assignments`, config).catch(() => ({ data: [] })),
         axios.get(`${API_BASE_URL}/submissions/assignment`, config).catch(() => ({ data: [] })),
         axios.get(`${API_BASE_URL}/users`, config).catch(() => ({ data: [] })),
-        // ✅ FIX: Use the specific user endpoint to prevent 500 error
         axios.get(`${API_BASE_URL}/messages/user/${currentUserId}`, config).catch(() => ({ data: [] }))
       ]);
 
-      // ✅ Safety Checks
       setCourses(Array.isArray(coursesRes.data) ? coursesRes.data : []);
       setModules(Array.isArray(modulesRes.data) ? modulesRes.data : []);
       setStudyMaterials(Array.isArray(lessonsRes.data) ? lessonsRes.data : []);
@@ -100,34 +98,9 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
     fetchData();
   }, []);
 
-  // --- LIVE CHAT: POLLING (Auto-Refresh Messages) ---
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const pollMessages = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
-        const res = await axios.get(`${API_BASE_URL}/messages/user/${user.id}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-
-        setMessages(Array.isArray(res.data) ? res.data : []);
-      } catch (err) {
-        // Silent fail
-      }
-    };
-
-    const intervalId = setInterval(pollMessages, 3000); // Poll every 3 seconds
-
-    return () => clearInterval(intervalId);
-  }, [user?.id]);
-
   // Filtering Logic
   const myCourses = useMemo(() => {
     if (!user) return [];
-    
     return courses.filter(c => {
       const fId = c.facilitator?.id || c.facilitatorId;
       return String(fId) === String(user.id);
@@ -166,24 +139,35 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
       } catch (e) { alert("Failed to delete test"); }
   };
 
-const handleSendMessage = async (receiverId: string, messageContent: string) => {
+  const handleDeleteAssignment = async (id: string) => {
+      if(!confirm("Delete this assignment? Student submissions may be lost.")) return;
+      try {
+          const token = localStorage.getItem('token');
+          await axios.delete(`${API_BASE_URL}/assignments/${id}`, {
+              headers: { Authorization: `Bearer ${token}` }
+          });
+          fetchData();
+      } catch (e) { alert("Failed to delete assignment"); }
+  }
+
+  // CHAT LOGIC
+  const handleSendMessage = async (receiverId: string, messageContent: string) => {
     try {
       const token = localStorage.getItem('token');
       const payload = {
         sender: { id: user?.id },
         receiver: { id: receiverId },
+        message: messageContent, 
         content: messageContent 
-        // ❌ REMOVED: message: messageContent (This line was crashing the backend)
       };
 
       const res = await axios.post(`${API_BASE_URL}/messages`, payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
-
       setMessages(prev => [...prev, res.data]);
     } catch (error) {
       console.error("Failed to send message", error);
-      alert("Failed to send message. Check console for details.");
+      alert("Failed to send message.");
     }
   };
 
@@ -224,7 +208,7 @@ const handleSendMessage = async (receiverId: string, messageContent: string) => 
               { id: 'tests', label: `Tests`, icon: FileText },
               { id: 'assignments', label: `Assignments`, icon: Award },
               { id: 'grading', label: `Grading Center`, icon: CheckCircle },
-              { id: 'chat', label: `Chat`, icon: MessageCircle } // ✅ Chat Tab
+              { id: 'chat', label: `Chat`, icon: MessageCircle } 
             ].map((tab) => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id as any)}
                 className={`flex items-center space-x-2 px-6 py-2.5 rounded-lg transition-all font-medium text-sm ${
@@ -238,10 +222,9 @@ const handleSendMessage = async (receiverId: string, messageContent: string) => 
         {/* CONTENT */}
         <div className="space-y-6">
           
-{/* MODULES TAB */}
+          {/* MODULES TAB */}
           {activeTab === 'modules' && (
             <div className="space-y-8">
-               {/* Header and Create Button */}
                <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                    <div>
                       <h2 className="text-xl font-bold text-gray-900">Modules</h2>
@@ -255,17 +238,12 @@ const handleSendMessage = async (receiverId: string, messageContent: string) => 
                    </button>
                </div>
 
-               {/* ✅ NEW: Group Modules by Course */}
                {myCourses.map(course => {
-                  // Filter modules that belong to this course
                   const courseModules = myModules.filter(m => String(m.courseId) === String(course.id));
-
-                  // Skip rendering this course section if it has no modules
                   if (courseModules.length === 0) return null;
 
                   return (
                     <div key={course.id} className="space-y-4 animate-in fade-in">
-                        {/* Course Title Header */}
                         <div className="flex items-center gap-3 border-b-2 border-gray-200 pb-2 mt-4">
                             <BookOpen className="w-6 h-6 text-gray-700" />
                             <h3 className="text-xl font-bold text-gray-800">{course.title}</h3>
@@ -274,7 +252,6 @@ const handleSendMessage = async (receiverId: string, messageContent: string) => 
                             </span>
                         </div>
 
-                        {/* Grid of Modules for this Course */}
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {courseModules.map((module) => (
                                 <div key={module.id} className="bg-white shadow-md rounded-xl overflow-hidden hover:shadow-xl transition border border-gray-100 flex flex-col">
@@ -295,7 +272,6 @@ const handleSendMessage = async (receiverId: string, messageContent: string) => 
                   );
                })}
 
-               {/* Fallback if you have absolutely no modules in any course */}
                {myModules.length === 0 && (
                     <div className="text-center py-12 text-gray-500 border-2 border-dashed rounded-lg bg-gray-50">
                       <p>You have no modules created yet.</p>
@@ -398,17 +374,14 @@ const handleSendMessage = async (receiverId: string, messageContent: string) => 
                                         {test.timed ? 'Timed' : 'Untimed'}
                                      </span>
                                   </div>
-                                  
                                   <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
                                       <span className="bg-gray-100 px-2 py-1 rounded">{parentModule?.title || 'Unknown Module'}</span>
                                       {test.timed && (
                                         <span className="flex items-center gap-1"><Clock size={12}/> {test.timeLimitInMinutes}m</span>
                                       )}
                                   </div>
-                                  
                                   <p className="text-sm text-gray-600 line-clamp-3">{test.description || "No description provided."}</p>
                                </div>
-
                                <div className="border-t border-gray-100 p-4 bg-gray-50 rounded-b-xl flex justify-between items-center">
                                    <div className="text-xs text-gray-400 font-medium">ID: {test.id}</div>
                                    <div className="flex gap-2">
@@ -423,17 +396,45 @@ const handleSendMessage = async (receiverId: string, messageContent: string) => 
              </div>
           )}
           
-          {/* ASSIGNMENTS TAB */}
+          {/* ✅ 3. ASSIGNMENTS TAB WITH CREATE BUTTON */}
           {activeTab === 'assignments' && (
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in">
-                 {myAssignments.length === 0 && <p className="col-span-3 text-center text-gray-500 py-10">No assignments created.</p>}
-                 {myAssignments.map(assignment => (
-                     <div key={assignment.id} className="bg-white border-l-4 border-slate-600 rounded-lg shadow-md p-6 hover:shadow-lg transition">
-                         <h3 className="font-bold text-gray-900 text-lg mb-2">{assignment.title}</h3>
-                         <p className="text-sm text-gray-600 mb-4 line-clamp-2">{assignment.description}</p>
-                         <p className="text-xs text-gray-500">Due: {new Date(assignment.dueDate).toLocaleDateString()}</p>
+             <div className="space-y-6 animate-in fade-in">
+                 <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                     <div>
+                       <h2 className="text-xl font-bold text-gray-900">Assignments</h2>
+                       <p className="text-sm text-gray-500">Manage file submissions and projects</p>
                      </div>
-                 ))}
+                     <button onClick={() => setShowCreateAssignment(true)} className="bg-red-600 text-white px-5 py-2.5 rounded-lg hover:bg-red-700 shadow-sm flex items-center space-x-2 font-medium">
+                         <Plus className="w-4 h-4"/> <span>Create Assignment</span>
+                     </button>
+                 </div>
+
+                 {myAssignments.length === 0 && (
+                    <div className="text-center py-12 text-gray-500 bg-white rounded-lg border border-dashed">
+                      No assignments created. Click "Create Assignment" to add one.
+                    </div>
+                 )}
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in">
+                     {myAssignments.map(assignment => {
+                         const parentModule = modules.find(m => String(m.id) === String(assignment.moduleId));
+                         return (
+                             <div key={assignment.id} className="bg-white border-l-4 border-slate-600 rounded-lg shadow-md p-6 hover:shadow-lg transition flex flex-col justify-between">
+                                 <div>
+                                     <h3 className="font-bold text-gray-900 text-lg mb-2">{assignment.title}</h3>
+                                     <p className="text-xs text-gray-500 mb-2">Module: {parentModule?.title || 'Unknown'}</p>
+                                     <p className="text-sm text-gray-600 mb-4 line-clamp-2">{assignment.description}</p>
+                                 </div>
+                                 <div className="pt-4 border-t border-gray-100 flex justify-between items-center">
+                                     <p className="text-xs text-gray-500">Due: {new Date(assignment.dueDate).toLocaleDateString()}</p>
+                                     <button onClick={() => handleDeleteAssignment(assignment.id)} className="text-red-500 hover:text-red-700">
+                                         <Trash2 size={16} />
+                                     </button>
+                                 </div>
+                             </div>
+                         );
+                     })}
+                 </div>
              </div>
           )}
 
@@ -448,14 +449,13 @@ const handleSendMessage = async (receiverId: string, messageContent: string) => 
             />
           )}
 
-          {/* ✅ CHAT TAB */}
+          {/* CHAT TAB */}
           {activeTab === 'chat' && (
             <div className="space-y-6 animate-in fade-in">
                 <h2 className="text-2xl font-bold text-black">Messages</h2>
                 <div className="bg-white p-6 rounded-lg shadow-md">
                      <ChatSystem
                       currentUser={user}
-                      // Pass all users (Students + Other Facilitators), filtering out self
                       users={usersList.filter(u => u.id !== user.id)}
                       messages={messages}
                       onSendMessage={handleSendMessage}
@@ -484,7 +484,7 @@ const handleSendMessage = async (receiverId: string, messageContent: string) => 
                                 key={m.id}
                                 onClick={() => {
                                     setShowModuleSelector(false);
-                                    setSelectedModuleForContent(m); // Opens the content manager
+                                    setSelectedModuleForContent(m); 
                                 }}
                                 className="w-full text-left p-3 border rounded-lg hover:bg-red-50 hover:border-red-200 transition flex justify-between items-center group"
                               >
@@ -527,6 +527,17 @@ const handleSendMessage = async (receiverId: string, messageContent: string) => 
             courses={myCourses}
             onDataMutated={fetchData}
             onClose={() => setShowCreateModule(false)}
+        />
+      )}
+
+      {/* ✅ 4. Render the Assignment Modal */}
+      {showCreateAssignment && (
+        <AssignmentCreationModal 
+            courses={myCourses}
+            modules={myModules}
+            currentUser={user}
+            onClose={() => setShowCreateAssignment(false)}
+            onCreated={() => { fetchData(); setShowCreateAssignment(false); }}
         />
       )}
     </div>
