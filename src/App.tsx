@@ -45,13 +45,17 @@ function App() {
     const storedToken = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
 
-    if (storedToken && storedUser) {
+    // ✅ FIX: Ignore if token is literally the string "undefined"
+    if (storedToken && storedToken !== "undefined" && storedUser) {
       setToken(storedToken);
       setCurrentUser(JSON.parse(storedUser));
+    } else {
+        // Cleanup bad data
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
     }
     setIsLoading(false);
   }, []);
-
   // --- 2. Attach token to axios ---
   useEffect(() => {
     if (token) {

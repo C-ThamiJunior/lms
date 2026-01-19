@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { ChatSystem } from './ChatSystem';
 import { DiscussionForum } from './DiscussionForum';
+// ✅ Import the Notification Component
+import { NotificationDropdown, NotificationItem } from './NotificationDropdown';
 
 // --- SUB-COMPONENT: ASSIGNMENT SUBMIT MODAL ---
 const AssignmentSubmitModal: React.FC<{
@@ -153,6 +155,9 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [myQuizAttempts, setMyQuizAttempts] = useState<any[]>([]);
 
+  // ✅ Notifications State
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+
   // UI State
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'materials' | 'tests' | 'assignments' | 'chat' | 'discussions'>('materials');
@@ -208,17 +213,15 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       setTests(Array.isArray(quizzesRes.data) ? quizzesRes.data : []);
       setAssignments(Array.isArray(assignmentsRes.data) ? assignmentsRes.data : []);
       
+      // ✅ ROBUST SUBMISSION FILTERING (Handles nested objects and flat IDs)
       const mySubmissions = Array.isArray(submissionsRes.data) ? submissionsRes.data.filter((s: any) => {
-         // Check deeply nested ID (standard JPA) OR flat ID (custom DTO)
          const submissionStudentId = s.student?.id || s.studentId || s.learnerId;
-         const submissionLearnerId = s.learner?.id; // Just in case backend uses 'learner' object
-         
+         const submissionLearnerId = s.learner?.id;
          const finalId = submissionStudentId || submissionLearnerId;
-
          return String(finalId) === String(currentUserId);
       }) : [];
-
       setAssignmentSubmissions(mySubmissions);
+
       setUsersList(Array.isArray(usersRes.data) ? usersRes.data : []);
       setMessages(Array.isArray(messagesRes.data) ? messagesRes.data : []);
       
@@ -253,6 +256,58 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
     return () => clearInterval(intervalId);
   }, [user?.id]);
 
+  // --- NOTIFICATION ENGINE ---
+  useEffect(() => {
+    if (!user) return;
+    const newNotifs: NotificationItem[] = [];
+
+    // 1. Unread Messages
+    const unreadMsgs = messages.filter(m => !m.read && String(m.senderId) !== String(user.id));
+    if (unreadMsgs.length > 0) {
+      newNotifs.push({
+        id: 'msg-bundle',
+        title: 'Unread Messages',
+        message: `You have ${unreadMsgs.length} new message(s).`,
+        type: 'info',
+        timestamp: new Date(),
+        isRead: false
+      });
+    }
+
+    // 2. Graded Assignments
+    assignmentSubmissions.forEach(sub => {
+        if (sub.grade !== null && sub.grade !== undefined && sub.gradedAt) {
+            newNotifs.push({
+                id: `grade-${sub.id}`,
+                title: 'Assignment Graded',
+                message: `Your assignment #${sub.assignmentId} was graded: ${sub.grade}%`,
+                type: 'success',
+                timestamp: new Date(sub.gradedAt),
+                isRead: false 
+            });
+        }
+    });
+
+    // 3. Pending Assignments (Due Soon)
+    assignments.forEach(a => {
+        // Robust 'isActive' check
+        const active = (a as any).active !== undefined ? (a as any).active : (a.isActive !== undefined ? a.isActive : true);
+        if (active && new Date(a.dueDate) > new Date()) {
+             newNotifs.push({
+                 id: `assign-${a.id}`,
+                 title: 'Pending Assignment',
+                 message: `${a.title} is due on ${new Date(a.dueDate).toLocaleDateString()}`,
+                 type: 'warning',
+                 timestamp: new Date(a.createdAt || new Date()),
+                 isRead: true // Default to read to avoid spam
+             });
+        }
+    });
+
+    setNotifications(newNotifs);
+  }, [messages, assignmentSubmissions, assignments, user]);
+
+
   // --- FILTERING LOGIC ---
   const enrolledCourseIds = useMemo(() => courses.map(c => String(c.id)), [courses]);
 
@@ -277,7 +332,6 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   const { pendingAssignments, submittedAssignments } = useMemo(() => {
     const allAssignments = assignments.filter(a => {
         const isEnrolled = enrolledCourseIds.includes(String(a.courseId));
-        // Robust check for 'isActive' or 'active'
         const isActive = (a as any).active !== undefined ? (a as any).active : (a.isActive !== undefined ? a.isActive : true);
         return isEnrolled && isActive;
     });
@@ -467,6 +521,13 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             </div>
             
             <div className="flex items-center space-x-4">
+                {/* ✅ NOTIFICATION BELL */}
+                <NotificationDropdown 
+                    notifications={notifications}
+                    onMarkAsRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? {...n, isRead: true} : n))}
+                    onClearAll={() => setNotifications([])}
+                />
+
                 {onNavigateToLanding && (
                     <button onClick={onNavigateToLanding} className="flex items-center space-x-1 text-gray-500 hover:text-red-600 text-sm font-medium transition-colors">
                         <Home className="w-4 h-4" />

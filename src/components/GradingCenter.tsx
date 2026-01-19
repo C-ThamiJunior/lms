@@ -25,34 +25,25 @@ export const GradingCenter: React.FC<GradingCenterProps> = ({
     const [studentSearch, setStudentSearch] = useState("");
     const [gradingLoading, setGradingLoading] = useState<string | null>(null);
 
-    // --- DEBUGGING LOGS (Check Console F12 if empty) ---
-    useEffect(() => {
-        console.log("GradingCenter Loaded Users:", users);
-        if (users.length > 0) {
-            console.log("Sample User Role:", users[0].role);
-            console.log("Sample User Name Data:", users[0].firstname, users[0].surname, users[0].name);
-        }
-    }, [users]);
-
-    // Derived State for Dropdowns
+    // Filter Modules based on Course
     const gradingModules = modules.filter(m => String(m.courseId) === String(selectedCourseId));
-    const gradingAssessments = gradingType === 'test' 
-        ? tests.filter(t => String(t.moduleId) === String(selectedModuleId))
-        : assignments.filter(a => String(a.moduleId) === String(selectedModuleId));
     
-    // ✅ ROBUST STUDENT FILTER
+    // ✅ FIX 1: Filter Assessments by Course FIRST. Module is optional.
+    const gradingAssessments = (gradingType === 'test' ? tests : assignments).filter(item => {
+        const matchesCourse = String(item.courseId) === String(selectedCourseId);
+        const matchesModule = selectedModuleId ? String(item.moduleId) === String(selectedModuleId) : true;
+        return matchesCourse && matchesModule;
+    });
+    
+    // ✅ FIX 2: Robust Student Filter (Case-insensitive & handles firstname/surname)
     const students = users.filter(u => {
-        // 1. Check Role (Handle nulls, uppercase, lowercase)
-        const role = String(u.role || '').toUpperCase();
+        const role = String(u.role || '').toUpperCase(); // Handle 'STUDENT' vs 'student'
         const isStudent = role === 'STUDENT';
 
-        // 2. Check Search (Handle firstname/surname OR name)
         const search = studentSearch.toLowerCase();
-        
-        // Construct full name safely
-        const fullName = u.firstname 
-            ? `${u.firstname} ${u.surname || ''}` 
-            : (u.name || '');
+        const fullName = u.name 
+            ? u.name 
+            : `${u.firstname || ''} ${u.surname || ''}`.trim();
             
         const matchesSearch = 
             fullName.toLowerCase().includes(search) ||
@@ -60,8 +51,6 @@ export const GradingCenter: React.FC<GradingCenterProps> = ({
 
         return isStudent && matchesSearch;
     });
-
-    console.log("Filtered Students Count:", students.length);
 
     // --- Action Handler ---
     const handleGrade = async (studentId: string, currentScore: number | undefined) => {
@@ -77,20 +66,18 @@ export const GradingCenter: React.FC<GradingCenterProps> = ({
 
         try {
             if (gradingType === 'test') {
-                // 1. Find existing attempt to update
+                // Find existing attempt ID if available
                 const existingResult = testResults.find(r => 
-                    String(r.testId) === String(selectedAssessmentId) && 
-                    String(r.studentId) === String(studentId)
+                    String(r.testId || (r as any).quizId) === String(selectedAssessmentId) && 
+                    String(r.studentId || (r as any).learnerId) === String(studentId)
                 );
 
-                // 2. Construct Payload
                 const payload = {
                     id: existingResult?.id, 
                     quiz: { id: selectedAssessmentId },
                     learner: { id: studentId }, 
-                    student: { id: studentId }, 
                     score: newScore,
-                    totalMarks: 100, 
+                    totalMarks: 100, // You might want to get this from the test object
                     feedback: feedback
                 };
 
@@ -101,7 +88,6 @@ export const GradingCenter: React.FC<GradingCenterProps> = ({
                 });
 
             } else {
-                // Assignment Grading
                 const submission = assignmentSubmissions.find(s => 
                     String(s.assignmentId) === String(selectedAssessmentId) && 
                     String(s.studentId) === String(studentId)
@@ -122,8 +108,6 @@ export const GradingCenter: React.FC<GradingCenterProps> = ({
                     })
                 });
             }
-            
-            // Refresh Data
             onDataMutated();
             alert("Grade saved successfully!");
 
@@ -150,7 +134,7 @@ export const GradingCenter: React.FC<GradingCenterProps> = ({
                 <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">1. Select Course</label>
                     <div className="relative">
-                        <select className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg appearance-none" value={selectedCourseId} onChange={e => { setSelectedCourseId(e.target.value); setSelectedModuleId(""); }}>
+                        <select className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg appearance-none" value={selectedCourseId} onChange={e => { setSelectedCourseId(e.target.value); setSelectedModuleId(""); setSelectedAssessmentId(""); }}>
                             <option value="">-- Choose Course --</option>
                             {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                         </select>
@@ -158,10 +142,10 @@ export const GradingCenter: React.FC<GradingCenterProps> = ({
                     </div>
                 </div>
                 <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">2. Select Module</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">2. Select Module (Optional)</label>
                     <div className="relative">
                         <select className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg appearance-none" value={selectedModuleId} onChange={e => setSelectedModuleId(e.target.value)} disabled={!selectedCourseId}>
-                            <option value="">-- Choose Module --</option>
+                            <option value="">-- All Modules --</option>
                             {gradingModules.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
                         </select>
                         <ChevronDown className="absolute right-3 top-3.5 w-4 h-4 text-gray-400 pointer-events-none"/>
@@ -180,7 +164,12 @@ export const GradingCenter: React.FC<GradingCenterProps> = ({
                 <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">4. Assessment</label>
                     <div className="relative">
-                        <select className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg appearance-none" value={selectedAssessmentId} onChange={e => setSelectedAssessmentId(e.target.value)} disabled={!selectedModuleId}>
+                        <select 
+                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg appearance-none" 
+                            value={selectedAssessmentId} 
+                            onChange={e => setSelectedAssessmentId(e.target.value)} 
+                            disabled={!selectedCourseId}
+                        >
                             <option value="">-- Choose --</option>
                             {gradingAssessments.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
                         </select>
@@ -198,19 +187,16 @@ export const GradingCenter: React.FC<GradingCenterProps> = ({
                     </div>
                     <div className="divide-y divide-gray-50">
                         {students.map((student) => {
-                            // Find existing grade safely
+                            // Find existing grade
                             const result = gradingType === 'test' 
-                                ? testResults.find(r => String(r.testId) === String(selectedAssessmentId) && String(r.studentId) === String(student.id))
+                                ? testResults.find(r => String(r.testId || (r as any).quizId) === String(selectedAssessmentId) && String(r.studentId || (r as any).learnerId) === String(student.id))
                                 : assignmentSubmissions.find(s => String(s.assignmentId) === String(selectedAssessmentId) && String(s.studentId) === String(student.id));
                             
-                            // Handle both 'grade' (assignments) and 'score' (tests)
+                            // Get score safely
                             const score = result ? ((result as any).grade ?? result.score) : undefined;
                             const hasSubmitted = !!result;
 
-                            // Safe Name Display
-                            const displayName = student.firstname 
-                                ? `${student.firstname} ${student.surname || ''}` 
-                                : (student.name || 'Unknown Student');
+                            const displayName = student.name || `${student.firstname || ''} ${student.surname || ''}`.trim() || 'Unknown';
 
                             return (
                                 <div key={student.id} className="px-6 py-4 flex items-center justify-between hover:bg-red-50 transition-colors">
@@ -242,10 +228,8 @@ export const GradingCenter: React.FC<GradingCenterProps> = ({
                             );
                         })}
                         {students.length === 0 && (
-                            <div className="p-6 text-center text-gray-500 flex flex-col items-center">
-                                <p className="font-medium text-gray-900">No students found.</p>
-                                <p className="text-sm">Total Users loaded: {users.length}</p>
-                                <p className="text-xs mt-2 text-red-400">(Check console logs for data details)</p>
+                            <div className="p-6 text-center text-gray-500">
+                                No students found. (Total users: {users.length})
                             </div>
                         )}
                     </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import {
-  User, Course, Module, StudyMaterial, Test, Assignment, ChatMessage
+  User, Course, Module, StudyMaterial, Test, Assignment, ChatMessage, AssignmentSubmission
 } from '../types/lms';
 import {
   BookOpen, Plus, Upload, FileText, Users, Award, LogOut, CheckCircle, Edit2, Video, Link as LinkIcon, Trash2, Clock, X, ChevronRight, MessageCircle, Home
@@ -13,8 +13,8 @@ import { ModuleContentManager } from './modals/ModuleContentManager';
 import { GradingCenter } from './dashboard/GradingCenter';
 import { ModuleCreationModal } from './modals/ModuleCreationModal';
 import { ChatSystem } from './ChatSystem';
-// ✅ 1. Import the new modal
 import { AssignmentCreationModal } from './modals/AssignmentCreationModal';
+import { NotificationDropdown, NotificationItem } from './NotificationDropdown';
 
 // Define Props
 interface FacilitatorDashboardProps {
@@ -26,71 +26,106 @@ interface FacilitatorDashboardProps {
 const API_BASE_URL = 'https://b-t-backend-production-1580.up.railway.app/api';
 
 export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ currentUser: propUser, onLogout, onNavigateToLanding }) => {
-  // State for User and Data
+  // --- STATE MANAGEMENT ---
   const [user, setUser] = useState<User | null>(propUser || null);
+  
+  // Data State
   const [courses, setCourses] = useState<Course[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
   const [studyMaterials, setStudyMaterials] = useState<StudyMaterial[]>([]);
   const [tests, setTests] = useState<Test[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [assignmentSubmissions, setAssignmentSubmissions] = useState<AssignmentSubmission[]>([]);
+  const [testResults, setTestResults] = useState<any[]>([]); // Quiz Attempts
   const [usersList, setUsersList] = useState<User[]>([]); 
   const [messages, setMessages] = useState<ChatMessage[]>([]); 
   
-  const [editingTest, setEditingTest] = useState<Test | null>(null);
-  
+  // Notifications
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+
   // UI State
   const [activeTab, setActiveTab] = useState<'modules' | 'lessons' | 'tests' | 'assignments' | 'grading' | 'chat'>('modules');
+  const [loading, setLoading] = useState(true);
+  
+  // Modal State
+  const [editingTest, setEditingTest] = useState<Test | null>(null);
   const [showCreateTest, setShowCreateTest] = useState(false);
-  const [selectedModuleForContent, setSelectedModuleForContent] = useState<Module | null>(null);
   const [showCreateModule, setShowCreateModule] = useState(false);
   const [showModuleSelector, setShowModuleSelector] = useState(false);
-  
-  // ✅ 2. Add State for Assignment Modal
   const [showCreateAssignment, setShowCreateAssignment] = useState(false);
-  
-  const [loading, setLoading] = useState(true);
+  const [selectedModuleForContent, setSelectedModuleForContent] = useState<Module | null>(null);
 
-  // Fetch Data on Mount
+  // --- DATA FETCHING ---
   const fetchData = async () => {
+    setLoading(true); // Start loading
     try {
       const token = localStorage.getItem('token');
-      if (!token) return; 
-
-      if (!user) {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) setUser(JSON.parse(storedUser));
+      // Safety Check: clear invalid token
+      if (!token || token === 'undefined') {
+          if (token === 'undefined') localStorage.removeItem('token');
+          alert("Session expired. Please log in again.");
+          onLogout();
+          return;
       }
-      const currentUserId = user?.id || JSON.parse(localStorage.getItem('user') || '{}').id;
-      if (!currentUserId) return;
+
+      // Ensure User ID
+      let currentUserId = user?.id;
+      if (!currentUserId) {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+            const parsedUser = JSON.parse(storedUser);
+            setUser(parsedUser);
+            currentUserId = parsedUser.id;
+        }
+      }
+      
+      if (!currentUserId) {
+          console.error("No user ID found.");
+          setLoading(false); // Stop loading if no user
+          return;
+      }
 
       const config = { headers: { Authorization: `Bearer ${token}` } };
 
-      const [
-        coursesRes, modulesRes, lessonsRes, quizzesRes, 
-        assignmentsRes, submissionsRes, usersRes, messagesRes
-      ] = await Promise.all([
-        axios.get(`${API_BASE_URL}/courses`, config).catch(() => ({ data: [] })), 
-        axios.get(`${API_BASE_URL}/modules`, config).catch(() => ({ data: [] })),
-        axios.get(`${API_BASE_URL}/lessons`, config).catch(() => ({ data: [] })),
-        axios.get(`${API_BASE_URL}/quizzes`, config).catch(() => ({ data: [] })),
-        axios.get(`${API_BASE_URL}/assignments`, config).catch(() => ({ data: [] })),
-        axios.get(`${API_BASE_URL}/submissions/assignment`, config).catch(() => ({ data: [] })),
-        axios.get(`${API_BASE_URL}/users`, config).catch(() => ({ data: [] })),
-        axios.get(`${API_BASE_URL}/messages/user/${currentUserId}`, config).catch(() => ({ data: [] }))
+      // Fetch ALL data in parallel (9 endpoints)
+      // We explicitly define the array to ensure matching length
+      const results = await Promise.all([
+        axios.get(`${API_BASE_URL}/courses`, config).catch(e => ({ data: [] })), 
+        axios.get(`${API_BASE_URL}/modules`, config).catch(e => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/lessons`, config).catch(e => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/quizzes`, config).catch(e => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/assignments`, config).catch(e => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/submissions/assignment`, config).catch(e => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/users`, config).catch(e => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/messages/user/${currentUserId}`, config).catch(e => ({ data: [] })),
+        axios.get(`${API_BASE_URL}/attempts/quiz`, config).catch(e => ({ data: [] }))
       ]);
+
+      // Destructure strictly from the results array
+      const coursesRes = results[0];
+      const modulesRes = results[1];
+      const lessonsRes = results[2];
+      const quizzesRes = results[3];
+      const assignmentsRes = results[4];
+      const submissionsRes = results[5];
+      const usersRes = results[6];
+      const messagesRes = results[7];
+      const attemptsRes = results[8];
 
       setCourses(Array.isArray(coursesRes.data) ? coursesRes.data : []);
       setModules(Array.isArray(modulesRes.data) ? modulesRes.data : []);
       setStudyMaterials(Array.isArray(lessonsRes.data) ? lessonsRes.data : []);
       setTests(Array.isArray(quizzesRes.data) ? quizzesRes.data : []);
       setAssignments(Array.isArray(assignmentsRes.data) ? assignmentsRes.data : []);
+      setAssignmentSubmissions(Array.isArray(submissionsRes.data) ? submissionsRes.data : []);
       setUsersList(Array.isArray(usersRes.data) ? usersRes.data : []);
       setMessages(Array.isArray(messagesRes.data) ? messagesRes.data : []);
+      setTestResults(Array.isArray(attemptsRes.data) ? attemptsRes.data : []);
 
     } catch (err) {
       console.error("Failed to load facilitator data", err);
     } finally {
-      setLoading(false);
+      setLoading(false); // ✅ ALWAYS stop loading
     }
   };
 
@@ -98,7 +133,66 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
     fetchData();
   }, []);
 
-  // Filtering Logic
+  // --- LIVE CHAT POLLING (5s) ---
+  useEffect(() => {
+    if (!user?.id) return;
+    const intervalId = setInterval(async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const res = await axios.get(`${API_BASE_URL}/messages/user/${user.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setMessages(Array.isArray(res.data) ? res.data : []);
+      } catch (err) { /* Silent fail */ }
+    }, 5000); 
+    return () => clearInterval(intervalId);
+  }, [user?.id]);
+
+  // --- NOTIFICATION ENGINE ---
+  useEffect(() => {
+    if (!user) return;
+    const newNotifs: NotificationItem[] = [];
+
+    // 1. Unread Messages
+    const unreadMsgs = messages.filter(m => !m.read && String(m.senderId) !== String(user.id));
+    if (unreadMsgs.length > 0) {
+      newNotifs.push({
+        id: 'msg-bundle',
+        title: 'New Messages',
+        message: `You have ${unreadMsgs.length} unread message(s).`,
+        type: 'info',
+        timestamp: new Date(),
+        isRead: false
+      });
+    }
+
+    // 2. Ungraded Assignments
+    // Find submissions for assignments *owned* by this facilitator
+    const myAssignmentIds = assignments
+        .filter(a => String(a.facilitatorId) === String(user.id))
+        .map(a => String(a.id));
+        
+    const ungraded = assignmentSubmissions.filter(s => 
+        myAssignmentIds.includes(String(s.assignmentId)) && 
+        (s.grade === null || s.grade === undefined)
+    );
+
+    if (ungraded.length > 0) {
+        newNotifs.push({
+            id: 'grading-needed',
+            title: 'Grading Required',
+            message: `${ungraded.length} submission(s) are waiting to be graded.`,
+            type: 'warning',
+            timestamp: new Date(),
+            isRead: false
+        });
+    }
+
+    setNotifications(newNotifs);
+  }, [messages, assignmentSubmissions, assignments, user]);
+
+  // --- FILTERING LOGIC ---
   const myCourses = useMemo(() => {
     if (!user) return [];
     return courses.filter(c => {
@@ -128,6 +222,7 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
     return assignments.filter(a => myCourses.some(c => String(c.id) === String(a.courseId)));
   }, [assignments, myCourses]);
 
+  // --- ACTIONS ---
   const handleDeleteTest = async (testId: string) => {
       if (!confirm("Are you sure? This will delete the test and all questions.")) return;
       try {
@@ -150,17 +245,14 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
       } catch (e) { alert("Failed to delete assignment"); }
   }
 
-  // CHAT LOGIC
   const handleSendMessage = async (receiverId: string, messageContent: string) => {
     try {
       const token = localStorage.getItem('token');
       const payload = {
         sender: { id: user?.id },
         receiver: { id: receiverId },
-        message: messageContent, 
         content: messageContent 
       };
-
       const res = await axios.post(`${API_BASE_URL}/messages`, payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -174,6 +266,7 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
   if (loading) return <div className="p-10 text-center">Loading Dashboard...</div>;
   if (!user) return <div className="p-10 text-center">Please log in.</div>;
 
+  // --- RENDER ---
   return (
     <div className="min-h-screen bg-gray-50">
       
@@ -185,6 +278,14 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
                 <h1 className="text-xl font-bold text-red-600">Facilitator Dashboard</h1>
             </div>
             <div className="flex items-center space-x-6">
+                
+                {/* Notification Bell */}
+                <NotificationDropdown 
+                    notifications={notifications}
+                    onMarkAsRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? {...n, isRead: true} : n))}
+                    onClearAll={() => setNotifications([])}
+                />
+
                 {onNavigateToLanding && (
                     <button onClick={onNavigateToLanding} className="flex items-center space-x-1 text-gray-500 hover:text-red-600 text-sm font-medium transition-colors">
                         <Home className="w-4 h-4" />
@@ -219,10 +320,10 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
             ))}
         </div>
 
-        {/* CONTENT */}
+        {/* DASHBOARD CONTENT */}
         <div className="space-y-6">
           
-          {/* MODULES TAB */}
+          {/* 1. MODULES */}
           {activeTab === 'modules' && (
             <div className="space-y-8">
                <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -230,10 +331,7 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
                       <h2 className="text-xl font-bold text-gray-900">Modules</h2>
                       <p className="text-sm text-gray-500">Manage content organized by course</p>
                    </div>
-                   <button 
-                      onClick={() => setShowCreateModule(true)} 
-                      className="bg-red-600 text-white px-5 py-2.5 rounded-lg hover:bg-red-700 shadow-sm flex items-center space-x-2 font-medium"
-                   >
+                   <button onClick={() => setShowCreateModule(true)} className="bg-red-600 text-white px-5 py-2.5 rounded-lg hover:bg-red-700 shadow-sm flex items-center space-x-2 font-medium">
                        <Plus className="w-4 h-4"/> <span>Create Module</span>
                    </button>
                </div>
@@ -271,7 +369,6 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
                     </div>
                   );
                })}
-
                {myModules.length === 0 && (
                     <div className="text-center py-12 text-gray-500 border-2 border-dashed rounded-lg bg-gray-50">
                       <p>You have no modules created yet.</p>
@@ -281,7 +378,7 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
             </div>
           )}
 
-          {/* ALL LESSONS TAB */}
+          {/* 2. LESSONS */}
           {activeTab === 'lessons' && (
             <div className="space-y-6 animate-in fade-in">
               <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -289,10 +386,7 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
                     <h2 className="text-xl font-bold text-gray-900">All Lessons</h2>
                     <p className="text-sm text-gray-500">View and manage all {myLessons.length} lessons (Videos, PDFs, Links).</p>
                   </div>
-                  <button 
-                    onClick={() => setShowModuleSelector(true)} 
-                    className="bg-red-600 text-white px-5 py-2.5 rounded-lg hover:bg-red-700 shadow-sm flex items-center space-x-2 font-medium"
-                  >
+                  <button onClick={() => setShowModuleSelector(true)} className="bg-red-600 text-white px-5 py-2.5 rounded-lg hover:bg-red-700 shadow-sm flex items-center space-x-2 font-medium">
                       <Plus className="w-4 h-4"/> <span>Create Lesson</span>
                   </button>
               </div>
@@ -343,7 +437,7 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
             </div>
           )}
 
-          {/* TESTS TAB */}
+          {/* 3. TESTS */}
           {activeTab === 'tests' && (
              <div className="space-y-6 animate-in fade-in">
                  <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -396,7 +490,7 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
              </div>
           )}
           
-          {/* ✅ 3. ASSIGNMENTS TAB WITH CREATE BUTTON */}
+          {/* 4. ASSIGNMENTS */}
           {activeTab === 'assignments' && (
              <div className="space-y-6 animate-in fade-in">
                  <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -438,18 +532,19 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
              </div>
           )}
 
-          {/* GRADING CENTER TAB */}
+          {/* 5. GRADING CENTER */}
           {activeTab === 'grading' && (
             <GradingCenter 
                 courses={myCourses} modules={myModules} 
                 tests={myTests} assignments={myAssignments}
-                users={usersList} testResults={[]} 
-                assignmentSubmissions={[]} 
+                users={usersList} 
+                testResults={testResults} 
+                assignmentSubmissions={assignmentSubmissions} 
                 onDataMutated={fetchData}
             />
           )}
 
-          {/* CHAT TAB */}
+          {/* 6. CHAT */}
           {activeTab === 'chat' && (
             <div className="space-y-6 animate-in fade-in">
                 <h2 className="text-2xl font-bold text-black">Messages</h2>
@@ -467,7 +562,8 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
         </div>
       </div>
 
-      {/* MODALS */}
+      {/* --- MODALS --- */}
+      
       {showModuleSelector && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
@@ -530,7 +626,6 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
         />
       )}
 
-      {/* ✅ 4. Render the Assignment Modal */}
       {showCreateAssignment && (
         <AssignmentCreationModal 
             courses={myCourses}

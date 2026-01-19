@@ -42,7 +42,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onLogin, onRegister }) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  // --- Login Handler ---
+// --- Login Handler ---
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -55,15 +55,23 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onLogin, onRegister }) => {
       });
 
       console.log("Login Success:", res.data);
-      const { token, user } = res.data;
 
-      // Normalizing role for frontend usage (Backend sends 'ROLE_STUDENT', we want 'student' for UI logic)
+      // ✅ FIX: Look inside 'res.data.user.token' first
+      // The server sends: { user: { token: "..." } }
+      const token = res.data.user?.token || res.data.token || res.data.accessToken;
+      const user = res.data.user;
+
+      if (!token) {
+        throw new Error("Login succeeded but no token was found in the response.");
+      }
+
+      // Normalizing role
       if (user.role) user.role = user.role.replace(/^ROLE_/i, "").toLowerCase();
 
       onLogin({ token, user });
     } catch (err: any) {
       console.error("Login Error:", err);
-      setError(err.response?.data?.message || "Invalid credentials.");
+      setError(err.response?.data?.message || err.message || "Invalid credentials.");
     } finally {
       setIsLoading(false);
     }
