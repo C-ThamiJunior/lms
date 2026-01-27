@@ -52,7 +52,7 @@ const AssignmentSubmitModal: React.FC<{
     
     // Note: Facilitator ID is auto-handled by backend now
 
-    fetch('https://b-t-backend-production-1580.up.railway.app/api/submissions/assignment', { 
+    fetch('https://b-t-backend-uc9w.onrender.com/api/submissions/assignment', { 
       method: 'POST',
       body: formData,
     })
@@ -136,7 +136,7 @@ interface StudentDashboardProps {
   onNavigateToLanding?: () => void;
 }
 
-const API_BASE_URL = 'https://b-t-backend-production-1580.up.railway.app/api';
+const API_BASE_URL = 'https://b-t-backend-uc9w.onrender.com/api';
 
 export const StudentDashboard: React.FC<StudentDashboardProps> = ({ 
   currentUser: propUser, 

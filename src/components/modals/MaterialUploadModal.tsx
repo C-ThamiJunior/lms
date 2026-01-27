@@ -11,7 +11,7 @@ interface MaterialUploadModalProps {
 }
 
 // Ensure this matches your backend port
-const API_BASE_URL = 'https://b-t-backend-production-1580.up.railway.app/api';
+const API_BASE_URL = 'https://b-t-backend-uc9w.onrender.com/api';
 
 export const MaterialUploadModal: React.FC<MaterialUploadModalProps> = ({ modules, currentUser, onDataMutated, onClose }) => {
   const [formData, setFormData] = useState({

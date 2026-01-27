@@ -7,7 +7,7 @@ interface CourseCatalogProps {
   currentUser: User;
 }
 
-const API_BASE_URL = 'https://b-t-backend-production-1580.up.railway.app/api';
+const API_BASE_URL = 'https://b-t-backend-uc9w.onrender.com/api';
 
 export const CourseCatalog: React.FC<CourseCatalogProps> = ({ currentUser }) => {
   const [courses, setCourses] = useState<Course[]>([]);

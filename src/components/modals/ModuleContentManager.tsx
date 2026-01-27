@@ -10,7 +10,7 @@ interface ModuleContentManagerProps {
   onClose: () => void;
 }
 
-const API_BASE_URL = 'https://b-t-backend-production-1580.up.railway.app/api';
+const API_BASE_URL = 'https://b-t-backend-uc9w.onrender.com/api';
 
 export const ModuleContentManager: React.FC<ModuleContentManagerProps> = ({ module, materials, currentUser, onDataMutated, onClose }) => {
   // Filter materials for THIS module only

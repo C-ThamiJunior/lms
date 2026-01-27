@@ -13,7 +13,7 @@ interface GradingCenterProps {
     onDataMutated: () => void;
 }
 
-const API_BASE_URL = 'https://b-t-backend-production-1580.up.railway.app/api';
+const API_BASE_URL = 'https://b-t-backend-uc9w.onrender.com/api';
 
 export const GradingCenter: React.FC<GradingCenterProps> = ({ 
     courses, modules, tests, assignments, users, testResults, assignmentSubmissions, onDataMutated 

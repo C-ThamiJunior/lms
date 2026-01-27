@@ -34,7 +34,7 @@ interface AdminDashboardProps {
 }
 
 // API Configuration
-const API_BASE_URL = 'https://b-t-backend-production-1580.up.railway.app/api';
+const API_BASE_URL = 'https://b-t-backend-uc9w.onrender.com/api';
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {

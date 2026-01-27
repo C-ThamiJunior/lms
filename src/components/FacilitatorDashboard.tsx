@@ -4,7 +4,7 @@ import {
   User, Course, Module, StudyMaterial, Test, Assignment, ChatMessage, AssignmentSubmission
 } from '../types/lms';
 import {
-  BookOpen, Plus, Upload, FileText, Users, Award, LogOut, CheckCircle, Edit2, Video, Link as LinkIcon, Trash2, Clock, X, ChevronRight, MessageCircle, Home
+  BookOpen, Plus, Upload, FileText, Users, Award, LogOut, CheckCircle, Edit2, Video, Link as LinkIcon, Trash2, Clock, X, ChevronRight, MessageCircle, Home, Download, File
 } from 'lucide-react';
 
 // Sub-components
@@ -23,7 +23,7 @@ interface FacilitatorDashboardProps {
   onNavigateToLanding?: () => void;
 }
 
-const API_BASE_URL = 'https://b-t-backend-production-1580.up.railway.app/api';
+const API_BASE_URL = 'https://b-t-backend-uc9w.onrender.com/api';
 
 export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ currentUser: propUser, onLogout, onNavigateToLanding }) => {
   // --- STATE MANAGEMENT ---
@@ -36,7 +36,7 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
   const [tests, setTests] = useState<Test[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [assignmentSubmissions, setAssignmentSubmissions] = useState<AssignmentSubmission[]>([]);
-  const [testResults, setTestResults] = useState<any[]>([]); // Quiz Attempts
+  const [testResults, setTestResults] = useState<any[]>([]); 
   const [usersList, setUsersList] = useState<User[]>([]); 
   const [messages, setMessages] = useState<ChatMessage[]>([]); 
   
@@ -44,9 +44,13 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   // UI State
-  const [activeTab, setActiveTab] = useState<'modules' | 'lessons' | 'tests' | 'assignments' | 'grading' | 'chat'>('modules');
+  // ✅ ADDED 'submissions' to activeTab type
+  const [activeTab, setActiveTab] = useState<'modules' | 'lessons' | 'tests' | 'assignments' | 'submissions' | 'grading' | 'chat'>('modules');
   const [loading, setLoading] = useState(true);
   
+  // Submissions Tab State
+  const [selectedAssignmentForView, setSelectedAssignmentForView] = useState<string>("");
+
   // Modal State
   const [editingTest, setEditingTest] = useState<Test | null>(null);
   const [showCreateTest, setShowCreateTest] = useState(false);
@@ -57,10 +61,9 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
 
   // --- DATA FETCHING ---
   const fetchData = async () => {
-    setLoading(true); // Start loading
+    setLoading(true); 
     try {
       const token = localStorage.getItem('token');
-      // Safety Check: clear invalid token
       if (!token || token === 'undefined') {
           if (token === 'undefined') localStorage.removeItem('token');
           alert("Session expired. Please log in again.");
@@ -68,7 +71,6 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
           return;
       }
 
-      // Ensure User ID
       let currentUserId = user?.id;
       if (!currentUserId) {
         const storedUser = localStorage.getItem('user');
@@ -80,15 +82,12 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
       }
       
       if (!currentUserId) {
-          console.error("No user ID found.");
-          setLoading(false); // Stop loading if no user
+          setLoading(false); 
           return;
       }
 
       const config = { headers: { Authorization: `Bearer ${token}` } };
 
-      // Fetch ALL data in parallel (9 endpoints)
-      // We explicitly define the array to ensure matching length
       const results = await Promise.all([
         axios.get(`${API_BASE_URL}/courses`, config).catch(e => ({ data: [] })), 
         axios.get(`${API_BASE_URL}/modules`, config).catch(e => ({ data: [] })),
@@ -101,31 +100,20 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
         axios.get(`${API_BASE_URL}/attempts/quiz`, config).catch(e => ({ data: [] }))
       ]);
 
-      // Destructure strictly from the results array
-      const coursesRes = results[0];
-      const modulesRes = results[1];
-      const lessonsRes = results[2];
-      const quizzesRes = results[3];
-      const assignmentsRes = results[4];
-      const submissionsRes = results[5];
-      const usersRes = results[6];
-      const messagesRes = results[7];
-      const attemptsRes = results[8];
-
-      setCourses(Array.isArray(coursesRes.data) ? coursesRes.data : []);
-      setModules(Array.isArray(modulesRes.data) ? modulesRes.data : []);
-      setStudyMaterials(Array.isArray(lessonsRes.data) ? lessonsRes.data : []);
-      setTests(Array.isArray(quizzesRes.data) ? quizzesRes.data : []);
-      setAssignments(Array.isArray(assignmentsRes.data) ? assignmentsRes.data : []);
-      setAssignmentSubmissions(Array.isArray(submissionsRes.data) ? submissionsRes.data : []);
-      setUsersList(Array.isArray(usersRes.data) ? usersRes.data : []);
-      setMessages(Array.isArray(messagesRes.data) ? messagesRes.data : []);
-      setTestResults(Array.isArray(attemptsRes.data) ? attemptsRes.data : []);
+      setCourses(Array.isArray(results[0].data) ? results[0].data : []);
+      setModules(Array.isArray(results[1].data) ? results[1].data : []);
+      setStudyMaterials(Array.isArray(results[2].data) ? results[2].data : []);
+      setTests(Array.isArray(results[3].data) ? results[3].data : []);
+      setAssignments(Array.isArray(results[4].data) ? results[4].data : []);
+      setAssignmentSubmissions(Array.isArray(results[5].data) ? results[5].data : []);
+      setUsersList(Array.isArray(results[6].data) ? results[6].data : []);
+      setMessages(Array.isArray(results[7].data) ? results[7].data : []);
+      setTestResults(Array.isArray(results[8].data) ? results[8].data : []);
 
     } catch (err) {
       console.error("Failed to load facilitator data", err);
     } finally {
-      setLoading(false); // ✅ ALWAYS stop loading
+      setLoading(false); 
     }
   };
 
@@ -133,7 +121,7 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
     fetchData();
   }, []);
 
-  // --- LIVE CHAT POLLING (5s) ---
+  // --- LIVE CHAT POLLING ---
   useEffect(() => {
     if (!user?.id) return;
     const intervalId = setInterval(async () => {
@@ -149,12 +137,10 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
     return () => clearInterval(intervalId);
   }, [user?.id]);
 
-  // --- NOTIFICATION ENGINE ---
+  // --- NOTIFICATIONS ---
   useEffect(() => {
     if (!user) return;
     const newNotifs: NotificationItem[] = [];
-
-    // 1. Unread Messages
     const unreadMsgs = messages.filter(m => !m.read && String(m.senderId) !== String(user.id));
     if (unreadMsgs.length > 0) {
       newNotifs.push({
@@ -166,18 +152,8 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
         isRead: false
       });
     }
-
-    // 2. Ungraded Assignments
-    // Find submissions for assignments *owned* by this facilitator
-    const myAssignmentIds = assignments
-        .filter(a => String(a.facilitatorId) === String(user.id))
-        .map(a => String(a.id));
-        
-    const ungraded = assignmentSubmissions.filter(s => 
-        myAssignmentIds.includes(String(s.assignmentId)) && 
-        (s.grade === null || s.grade === undefined)
-    );
-
+    const myAssignmentIds = assignments.filter(a => String(a.facilitatorId) === String(user.id)).map(a => String(a.id));
+    const ungraded = assignmentSubmissions.filter(s => myAssignmentIds.includes(String(s.assignmentId)) && (s.grade === null || s.grade === undefined));
     if (ungraded.length > 0) {
         newNotifs.push({
             id: 'grading-needed',
@@ -188,59 +164,31 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
             isRead: false
         });
     }
-
     setNotifications(newNotifs);
   }, [messages, assignmentSubmissions, assignments, user]);
 
-  // --- FILTERING LOGIC ---
-  const myCourses = useMemo(() => {
-    if (!user) return [];
-    return courses.filter(c => {
-      const fId = c.facilitator?.id || c.facilitatorId;
-      return String(fId) === String(user.id);
-    });
-  }, [courses, user]);
-
-  const myModules = useMemo(() => {
-    return modules.filter(m => myCourses.some(c => String(c.id) === String(m.courseId)));
-  }, [modules, myCourses]);
-
-  const myLessons = useMemo(() => {
-    return studyMaterials
-        .filter(mat => myModules.some(m => String(m.id) === String(mat.moduleId)))
-        .filter(mat => {
-             const type = ((mat as any).contentType || mat.type || '').toUpperCase();
-             return type !== 'QUIZ' && type !== 'ASSIGNMENT';
-        }); 
-  }, [studyMaterials, myModules]);
-
-  const myTests = useMemo(() => {
-    return tests.filter(t => myCourses.some(c => String(c.id) === String(t.courseId)));
-  }, [tests, myCourses]);
-
-  const myAssignments = useMemo(() => {
-    return assignments.filter(a => myCourses.some(c => String(c.id) === String(a.courseId)));
-  }, [assignments, myCourses]);
+  // --- FILTERING ---
+  const myCourses = useMemo(() => courses.filter(c => String(c.facilitatorId || c.facilitator?.id) === String(user?.id)), [courses, user]);
+  const myModules = useMemo(() => modules.filter(m => myCourses.some(c => String(c.id) === String(m.courseId))), [modules, myCourses]);
+  const myLessons = useMemo(() => studyMaterials.filter(mat => myModules.some(m => String(m.id) === String(mat.moduleId))).filter(mat => { const type = ((mat as any).contentType || mat.type || '').toUpperCase(); return type !== 'QUIZ' && type !== 'ASSIGNMENT'; }), [studyMaterials, myModules]);
+  const myTests = useMemo(() => tests.filter(t => myCourses.some(c => String(c.id) === String(t.courseId))), [tests, myCourses]);
+  const myAssignments = useMemo(() => assignments.filter(a => myCourses.some(c => String(c.id) === String(a.courseId))), [assignments, myCourses]);
 
   // --- ACTIONS ---
   const handleDeleteTest = async (testId: string) => {
-      if (!confirm("Are you sure? This will delete the test and all questions.")) return;
+      if (!confirm("Are you sure? This will delete the test.")) return;
       try {
           const token = localStorage.getItem('token');
-          await axios.delete(`${API_BASE_URL}/quizzes/${testId}`, {
-              headers: { Authorization: `Bearer ${token}` }
-          });
+          await axios.delete(`${API_BASE_URL}/quizzes/${testId}`, { headers: { Authorization: `Bearer ${token}` } });
           fetchData();
       } catch (e) { alert("Failed to delete test"); }
   };
 
   const handleDeleteAssignment = async (id: string) => {
-      if(!confirm("Delete this assignment? Student submissions may be lost.")) return;
+      if(!confirm("Delete this assignment? Submissions will be lost.")) return;
       try {
           const token = localStorage.getItem('token');
-          await axios.delete(`${API_BASE_URL}/assignments/${id}`, {
-              headers: { Authorization: `Bearer ${token}` }
-          });
+          await axios.delete(`${API_BASE_URL}/assignments/${id}`, { headers: { Authorization: `Bearer ${token}` } });
           fetchData();
       } catch (e) { alert("Failed to delete assignment"); }
   }
@@ -248,28 +196,20 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
   const handleSendMessage = async (receiverId: string, messageContent: string) => {
     try {
       const token = localStorage.getItem('token');
-      const payload = {
+      const res = await axios.post(`${API_BASE_URL}/messages`, {
         sender: { id: user?.id },
         receiver: { id: receiverId },
         content: messageContent 
-      };
-      const res = await axios.post(`${API_BASE_URL}/messages`, payload, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      }, { headers: { Authorization: `Bearer ${token}` } });
       setMessages(prev => [...prev, res.data]);
-    } catch (error) {
-      console.error("Failed to send message", error);
-      alert("Failed to send message.");
-    }
+    } catch (error) { alert("Failed to send message."); }
   };
 
   if (loading) return <div className="p-10 text-center">Loading Dashboard...</div>;
-  if (!user) return <div className="p-10 text-center">Please log in.</div>;
+  if (!user) return <div className="p-10 text-center text-red-600">Please log in.</div>;
 
-  // --- RENDER ---
   return (
     <div className="min-h-screen bg-gray-50">
-      
       {/* HEADER */}
       <header className="bg-white border-b border-red-600 shadow-sm sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
@@ -278,18 +218,14 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
                 <h1 className="text-xl font-bold text-red-600">Facilitator Dashboard</h1>
             </div>
             <div className="flex items-center space-x-6">
-                
-                {/* Notification Bell */}
                 <NotificationDropdown 
                     notifications={notifications}
                     onMarkAsRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? {...n, isRead: true} : n))}
                     onClearAll={() => setNotifications([])}
                 />
-
                 {onNavigateToLanding && (
                     <button onClick={onNavigateToLanding} className="flex items-center space-x-1 text-gray-500 hover:text-red-600 text-sm font-medium transition-colors">
-                        <Home className="w-4 h-4" />
-                        <span>Landing Page</span>
+                        <Home className="w-4 h-4" /><span>Landing Page</span>
                     </button>
                 )}
                 <span className="text-sm text-gray-600">Welcome, {user.firstname}</span>
@@ -308,11 +244,12 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
               { id: 'lessons', label: `All Lessons`, icon: BookOpen }, 
               { id: 'tests', label: `Tests`, icon: FileText },
               { id: 'assignments', label: `Assignments`, icon: Award },
+              { id: 'submissions', label: `Submissions`, icon: Download }, // ✅ NEW TAB
               { id: 'grading', label: `Grading Center`, icon: CheckCircle },
               { id: 'chat', label: `Chat`, icon: MessageCircle } 
             ].map((tab) => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center space-x-2 px-6 py-2.5 rounded-lg transition-all font-medium text-sm ${
+                className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg transition-all font-medium text-sm ${
                   activeTab === tab.id ? 'bg-red-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'
                 }`}>
                 <tab.icon className="w-4 h-4" /> <span>{tab.label}</span>
@@ -320,321 +257,198 @@ export const FacilitatorDashboard: React.FC<FacilitatorDashboardProps> = ({ curr
             ))}
         </div>
 
-        {/* DASHBOARD CONTENT */}
+        {/* CONTENT AREA */}
         <div className="space-y-6">
           
-          {/* 1. MODULES */}
+          {/* MODULES */}
           {activeTab === 'modules' && (
-            <div className="space-y-8">
+            <div className="space-y-8 animate-in fade-in">
                <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                   <div>
-                      <h2 className="text-xl font-bold text-gray-900">Modules</h2>
-                      <p className="text-sm text-gray-500">Manage content organized by course</p>
-                   </div>
-                   <button onClick={() => setShowCreateModule(true)} className="bg-red-600 text-white px-5 py-2.5 rounded-lg hover:bg-red-700 shadow-sm flex items-center space-x-2 font-medium">
-                       <Plus className="w-4 h-4"/> <span>Create Module</span>
-                   </button>
+                   <div><h2 className="text-xl font-bold text-gray-900">Modules</h2><p className="text-sm text-gray-500">Manage content organized by course</p></div>
+                   <button onClick={() => setShowCreateModule(true)} className="bg-red-600 text-white px-5 py-2.5 rounded-lg hover:bg-red-700 shadow-sm flex items-center space-x-2 font-medium"><Plus className="w-4 h-4"/> <span>Create Module</span></button>
                </div>
-
                {myCourses.map(course => {
                   const courseModules = myModules.filter(m => String(m.courseId) === String(course.id));
                   if (courseModules.length === 0) return null;
-
                   return (
-                    <div key={course.id} className="space-y-4 animate-in fade-in">
-                        <div className="flex items-center gap-3 border-b-2 border-gray-200 pb-2 mt-4">
-                            <BookOpen className="w-6 h-6 text-gray-700" />
-                            <h3 className="text-xl font-bold text-gray-800">{course.title}</h3>
-                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-medium">
-                                {courseModules.length} Modules
-                            </span>
-                        </div>
-
+                    <div key={course.id} className="space-y-4">
+                        <div className="flex items-center gap-3 border-b-2 border-gray-200 pb-2 mt-4"><BookOpen className="w-6 h-6 text-gray-700" /><h3 className="text-xl font-bold text-gray-800">{course.title}</h3></div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {courseModules.map((module) => (
                                 <div key={module.id} className="bg-white shadow-md rounded-xl overflow-hidden hover:shadow-xl transition border border-gray-100 flex flex-col">
-                                    <div className="h-32 bg-slate-50 flex items-center justify-center border-b border-gray-100">
-                                        <BookOpen className="text-red-200 w-12 h-12"/>
-                                    </div>
-                                    <div className="p-6 flex-1 flex flex-col">
-                                        <h3 className="text-lg font-bold text-gray-900 mb-2">{module.title}</h3>
-                                        <p className="text-sm text-gray-600 line-clamp-2 mb-4 flex-1">{module.description}</p>
-                                        <button onClick={() => setSelectedModuleForContent(module)} className="w-full bg-white border border-red-600 text-red-600 py-2 rounded-lg hover:bg-red-50 transition text-sm font-medium flex items-center justify-center space-x-2">
-                                            <Upload className="w-4 h-4" /> <span>Manage Content</span>
-                                        </button>
-                                    </div>
+                                    <div className="h-32 bg-slate-50 flex items-center justify-center border-b border-gray-100"><BookOpen className="text-red-200 w-12 h-12"/></div>
+                                    <div className="p-6 flex-1 flex flex-col"><h3 className="text-lg font-bold text-gray-900 mb-2">{module.title}</h3><p className="text-sm text-gray-600 line-clamp-2 mb-4 flex-1">{module.description}</p><button onClick={() => setSelectedModuleForContent(module)} className="w-full bg-white border border-red-600 text-red-600 py-2 rounded-lg hover:bg-red-50 transition text-sm font-medium flex items-center justify-center space-x-2"><Upload className="w-4 h-4" /> <span>Manage Content</span></button></div>
                                 </div>
                             ))}
                         </div>
                     </div>
                   );
                })}
-               {myModules.length === 0 && (
-                    <div className="text-center py-12 text-gray-500 border-2 border-dashed rounded-lg bg-gray-50">
-                      <p>You have no modules created yet.</p>
-                      <p className="text-sm mt-1">Click "Create Module" to get started.</p>
-                    </div>
-               )}
             </div>
           )}
 
-          {/* 2. LESSONS */}
+          {/* LESSONS */}
           {activeTab === 'lessons' && (
             <div className="space-y-6 animate-in fade-in">
               <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                  <div>
-                    <h2 className="text-xl font-bold text-gray-900">All Lessons</h2>
-                    <p className="text-sm text-gray-500">View and manage all {myLessons.length} lessons (Videos, PDFs, Links).</p>
-                  </div>
-                  <button onClick={() => setShowModuleSelector(true)} className="bg-red-600 text-white px-5 py-2.5 rounded-lg hover:bg-red-700 shadow-sm flex items-center space-x-2 font-medium">
-                      <Plus className="w-4 h-4"/> <span>Create Lesson</span>
-                  </button>
+                  <div><h2 className="text-xl font-bold text-gray-900">All Lessons</h2><p className="text-sm text-gray-500">View and manage all {myLessons.length} lessons.</p></div>
+                  <button onClick={() => setShowModuleSelector(true)} className="bg-red-600 text-white px-5 py-2.5 rounded-lg hover:bg-red-700 shadow-sm flex items-center space-x-2 font-medium"><Plus className="w-4 h-4"/> <span>Create Lesson</span></button>
               </div>
-
-              {myLessons.length === 0 ? (
-                <div className="text-center py-12 text-gray-500 bg-white rounded-lg border border-dashed">
-                  No lessons found. Click 'Create Lesson' to start.
-                </div>
-              ) : (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm text-gray-600">
-                      <thead className="bg-gray-50 text-xs uppercase font-semibold text-gray-500">
-                        <tr>
-                          <th className="px-6 py-4">Title</th>
-                          <th className="px-6 py-4">Type</th>
-                          <th className="px-6 py-4">Module</th>
-                          <th className="px-6 py-4">Actions</th>
-                        </tr>
-                      </thead>
+                      <thead className="bg-gray-50 text-xs uppercase font-semibold text-gray-500"><tr><th className="px-6 py-4">Title</th><th className="px-6 py-4">Type</th><th className="px-6 py-4">Module</th><th className="px-6 py-4">Actions</th></tr></thead>
                       <tbody className="divide-y divide-gray-100">
-                        {myLessons.map((lesson) => {
-                          const parentModule = modules.find(m => String(m.id) === String(lesson.moduleId));
-                          return (
-                            <tr key={lesson.id} className="hover:bg-gray-50 transition">
-                              <td className="px-6 py-4 font-medium text-gray-900">{lesson.title}</td>
-                              <td className="px-6 py-4">
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-medium border border-blue-100">
-                                  {lesson.contentType === 'VIDEO' ? <Video size={12}/> : 
-                                   lesson.contentType === 'LINK' ? <LinkIcon size={12}/> : <FileText size={12}/>}
-                                  {lesson.contentType || 'PDF'}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 text-gray-500">{parentModule?.title || 'Unknown'}</td>
-                              <td className="px-6 py-4">
-                                <button onClick={() => setSelectedModuleForContent(parentModule || null)} className="text-gray-500 hover:text-gray-900 flex items-center gap-1 text-xs font-medium">
-                                  <Edit2 size={14} /> Edit
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
+                        {myLessons.map((lesson) => (
+                            <tr key={lesson.id} className="hover:bg-gray-50 transition"><td className="px-6 py-4 font-medium text-gray-900">{lesson.title}</td><td className="px-6 py-4"><span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-medium border border-blue-100">{lesson.contentType || 'PDF'}</span></td><td className="px-6 py-4 text-gray-500">{modules.find(m => String(m.id) === String(lesson.moduleId))?.title || 'Unknown'}</td><td className="px-6 py-4"><button onClick={() => setSelectedModuleForContent(modules.find(m => String(m.id) === String(lesson.moduleId)) || null)} className="text-gray-500 hover:text-gray-900 flex items-center gap-1 text-xs font-medium"><Edit2 size={14} /> Edit</button></td></tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
-                </div>
-              )}
+              </div>
             </div>
           )}
 
-          {/* 3. TESTS */}
+          {/* TESTS */}
           {activeTab === 'tests' && (
              <div className="space-y-6 animate-in fade-in">
                  <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                     <div>
-                       <h2 className="text-xl font-bold text-gray-900">Assessments</h2>
-                       <p className="text-sm text-gray-500">Manage quizzes and exams for your courses</p>
-                     </div>
-                     <button onClick={() => { setEditingTest(null); setShowCreateTest(true); }} className="bg-red-600 text-white px-5 py-2.5 rounded-lg hover:bg-red-700 shadow-sm flex items-center space-x-2 font-medium">
-                         <Plus className="w-4 h-4"/> <span>Create Assessment</span>
-                     </button>
+                     <div><h2 className="text-xl font-bold text-gray-900">Assessments</h2><p className="text-sm text-gray-500">Manage quizzes and exams</p></div>
+                     <button onClick={() => { setEditingTest(null); setShowCreateTest(true); }} className="bg-red-600 text-white px-5 py-2.5 rounded-lg hover:bg-red-700 shadow-sm flex items-center space-x-2 font-medium"><Plus className="w-4 h-4"/> <span>Create Assessment</span></button>
                  </div>
-
-                 {myTests.length === 0 && (
-                    <div className="text-center py-12 text-gray-500 bg-white rounded-lg border border-dashed">
-                      No assessments created yet. Click the button above to start.
-                    </div>
-                 )}
-
                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                     {myTests.map(test => {
-                         const parentModule = modules.find(m => String(m.id) === String(test.moduleId));
-                         return (
+                     {myTests.map(test => (
                            <div key={test.id} className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all group flex flex-col h-full">
-                               <div className="p-5 flex-1">
-                                  <div className="flex justify-between items-start mb-3">
-                                     <h3 className="font-bold text-gray-900 text-lg leading-tight">{test.title}</h3>
-                                     <span className={`text-xs px-2 py-1 rounded-full font-medium ${test.timed ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
-                                        {test.timed ? 'Timed' : 'Untimed'}
-                                     </span>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
-                                      <span className="bg-gray-100 px-2 py-1 rounded">{parentModule?.title || 'Unknown Module'}</span>
-                                      {test.timed && (
-                                        <span className="flex items-center gap-1"><Clock size={12}/> {test.timeLimitInMinutes}m</span>
-                                      )}
-                                  </div>
-                                  <p className="text-sm text-gray-600 line-clamp-3">{test.description || "No description provided."}</p>
-                               </div>
-                               <div className="border-t border-gray-100 p-4 bg-gray-50 rounded-b-xl flex justify-between items-center">
-                                   <div className="text-xs text-gray-400 font-medium">ID: {test.id}</div>
-                                   <div className="flex gap-2">
-                                      <button onClick={() => { setEditingTest(test); setShowCreateTest(true); }} className="text-gray-500 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded transition"><Edit2 size={16}/></button>
-                                      <button onClick={() => handleDeleteTest(test.id)} className="text-gray-500 hover:text-red-600 p-1.5 hover:bg-red-50 rounded transition"><Trash2 size={16}/></button>
-                                   </div>
-                               </div>
+                               <div className="p-5 flex-1"><div className="flex justify-between items-start mb-3"><h3 className="font-bold text-gray-900 text-lg leading-tight">{test.title}</h3><span className={`text-xs px-2 py-1 rounded-full font-medium ${test.timed ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>{test.timed ? 'Timed' : 'Untimed'}</span></div><p className="text-sm text-gray-600 line-clamp-3">{test.description}</p></div>
+                               <div className="border-t border-gray-100 p-4 bg-gray-50 rounded-b-xl flex justify-between items-center"><div className="text-xs text-gray-400 font-medium">ID: {test.id}</div><div className="flex gap-2"><button onClick={() => { setEditingTest(test); setShowCreateTest(true); }} className="text-gray-500 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded transition"><Edit2 size={16}/></button><button onClick={() => handleDeleteTest(test.id)} className="text-gray-500 hover:text-red-600 p-1.5 hover:bg-red-50 rounded transition"><Trash2 size={16}/></button></div></div>
                            </div>
-                         );
-                     })}
+                     ))}
                  </div>
              </div>
           )}
           
-          {/* 4. ASSIGNMENTS */}
+          {/* ASSIGNMENTS */}
           {activeTab === 'assignments' && (
              <div className="space-y-6 animate-in fade-in">
                  <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                     <div>
-                       <h2 className="text-xl font-bold text-gray-900">Assignments</h2>
-                       <p className="text-sm text-gray-500">Manage file submissions and projects</p>
-                     </div>
-                     <button onClick={() => setShowCreateAssignment(true)} className="bg-red-600 text-white px-5 py-2.5 rounded-lg hover:bg-red-700 shadow-sm flex items-center space-x-2 font-medium">
-                         <Plus className="w-4 h-4"/> <span>Create Assignment</span>
-                     </button>
+                     <div><h2 className="text-xl font-bold text-gray-900">Assignments</h2><p className="text-sm text-gray-500">Manage file submissions and projects</p></div>
+                     <button onClick={() => setShowCreateAssignment(true)} className="bg-red-600 text-white px-5 py-2.5 rounded-lg hover:bg-red-700 shadow-sm flex items-center space-x-2 font-medium"><Plus className="w-4 h-4"/> <span>Create Assignment</span></button>
                  </div>
-
-                 {myAssignments.length === 0 && (
-                    <div className="text-center py-12 text-gray-500 bg-white rounded-lg border border-dashed">
-                      No assignments created. Click "Create Assignment" to add one.
-                    </div>
-                 )}
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in">
-                     {myAssignments.map(assignment => {
-                         const parentModule = modules.find(m => String(m.id) === String(assignment.moduleId));
-                         return (
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                     {myAssignments.map(assignment => (
                              <div key={assignment.id} className="bg-white border-l-4 border-slate-600 rounded-lg shadow-md p-6 hover:shadow-lg transition flex flex-col justify-between">
-                                 <div>
-                                     <h3 className="font-bold text-gray-900 text-lg mb-2">{assignment.title}</h3>
-                                     <p className="text-xs text-gray-500 mb-2">Module: {parentModule?.title || 'Unknown'}</p>
-                                     <p className="text-sm text-gray-600 mb-4 line-clamp-2">{assignment.description}</p>
-                                 </div>
-                                 <div className="pt-4 border-t border-gray-100 flex justify-between items-center">
-                                     <p className="text-xs text-gray-500">Due: {new Date(assignment.dueDate).toLocaleDateString()}</p>
-                                     <button onClick={() => handleDeleteAssignment(assignment.id)} className="text-red-500 hover:text-red-700">
-                                         <Trash2 size={16} />
-                                     </button>
-                                 </div>
+                                 <div><h3 className="font-bold text-gray-900 text-lg mb-2">{assignment.title}</h3><p className="text-sm text-gray-600 mb-4 line-clamp-2">{assignment.description}</p></div>
+                                 <div className="pt-4 border-t border-gray-100 flex justify-between items-center"><p className="text-xs text-gray-500">Due: {new Date(assignment.dueDate).toLocaleDateString()}</p><button onClick={() => handleDeleteAssignment(assignment.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16} /></button></div>
                              </div>
-                         );
-                     })}
+                     ))}
                  </div>
              </div>
           )}
 
-          {/* 5. GRADING CENTER */}
+          {/* ✅ SUBMISSIONS TAB (NEW) */}
+          {activeTab === 'submissions' && (
+            <div className="space-y-6 animate-in fade-in">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <Download className="text-red-600 w-6 h-6"/> Student Submissions
+                    </h2>
+                    <div className="mb-6">
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Select Assignment to View:</label>
+                        <select 
+                            className="w-full md:w-1/2 p-3 bg-gray-50 border border-gray-200 rounded-lg appearance-none"
+                            value={selectedAssignmentForView}
+                            onChange={(e) => setSelectedAssignmentForView(e.target.value)}
+                        >
+                            <option value="">-- Choose Assignment --</option>
+                            {myAssignments.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
+                        </select>
+                    </div>
+
+                    {selectedAssignmentForView ? (
+                        <div className="border border-gray-200 rounded-xl overflow-hidden">
+                            <table className="w-full text-left text-sm text-gray-600">
+                                <thead className="bg-gray-50 text-xs uppercase font-semibold text-gray-500">
+                                    <tr>
+                                        <th className="px-6 py-4">Student</th>
+                                        <th className="px-6 py-4">Submission Date</th>
+                                        <th className="px-6 py-4">Status</th>
+                                        <th className="px-6 py-4 text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {assignmentSubmissions
+                                        .filter(s => String(s.assignmentId) === String(selectedAssignmentForView))
+                                        .map(sub => {
+                                            // Handle nested or flat student ID
+                                            const sId = (sub as any).student?.id || sub.studentId;
+                                            const student = usersList.find(u => String(u.id) === String(sId));
+                                            const studentName = student ? (student.firstname || student.name) : "Unknown Student";
+                                            const isGraded = sub.grade !== null && sub.grade !== undefined;
+
+                                            return (
+                                                <tr key={sub.id} className="hover:bg-gray-50 transition">
+                                                    <td className="px-6 py-4 font-medium text-gray-900">{studentName}</td>
+                                                    <td className="px-6 py-4">{new Date(sub.submissionDate).toLocaleString()}</td>
+                                                    <td className="px-6 py-4">
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${isGraded ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                                            {isGraded ? 'Graded' : 'Pending'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        {sub.fileUrl ? (
+                                                            <button 
+                                                                onClick={() => window.open(sub.fileUrl, '_blank')}
+                                                                className="text-blue-600 hover:text-blue-800 flex items-center justify-end gap-1 font-medium ml-auto"
+                                                            >
+                                                                <File className="w-4 h-4"/> Download
+                                                            </button>
+                                                        ) : (
+                                                            <span className="text-gray-400 text-xs">No File</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    }
+                                    {assignmentSubmissions.filter(s => String(s.assignmentId) === String(selectedAssignmentForView)).length === 0 && (
+                                        <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-500">No submissions found for this assignment yet.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="text-center py-12 text-gray-400 border-2 border-dashed rounded-xl">Please select an assignment to view submissions.</div>
+                    )}
+                </div>
+            </div>
+          )}
+
+          {/* GRADING */}
           {activeTab === 'grading' && (
             <GradingCenter 
-                courses={myCourses} modules={myModules} 
-                tests={myTests} assignments={myAssignments}
-                users={usersList} 
-                testResults={testResults} 
-                assignmentSubmissions={assignmentSubmissions} 
-                onDataMutated={fetchData}
+                courses={myCourses || []} modules={myModules || []} tests={myTests || []} assignments={myAssignments || []} users={usersList || []} 
+                testResults={Array.isArray(testResults) ? testResults : []} assignmentSubmissions={Array.isArray(assignmentSubmissions) ? assignmentSubmissions : []} onDataMutated={fetchData}
             />
           )}
 
-          {/* 6. CHAT */}
+          {/* CHAT */}
           {activeTab === 'chat' && (
             <div className="space-y-6 animate-in fade-in">
                 <h2 className="text-2xl font-bold text-black">Messages</h2>
                 <div className="bg-white p-6 rounded-lg shadow-md">
-                     <ChatSystem
-                      currentUser={user}
-                      users={usersList.filter(u => u.id !== user.id)}
-                      messages={messages}
-                      onSendMessage={handleSendMessage}
-                      onMarkAsRead={() => {}}
-                    />
+                     <ChatSystem currentUser={user} users={usersList.filter(u => u.id !== user.id)} messages={messages} onSendMessage={handleSendMessage} onMarkAsRead={() => {}} />
                 </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* --- MODALS --- */}
-      
-      {showModuleSelector && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
-                  <div className="flex justify-between items-center p-4 border-b">
-                      <h3 className="text-lg font-bold text-gray-800">Select Module</h3>
-                      <button onClick={() => setShowModuleSelector(false)}><X className="w-5 h-5 text-gray-400 hover:text-red-600" /></button>
-                  </div>
-                  <div className="p-4 overflow-y-auto max-h-[60vh]">
-                      <p className="text-sm text-gray-500 mb-4">Choose a module to add this lesson to:</p>
-                      {myModules.length === 0 && <p className="text-red-500 text-sm">You must create a module first.</p>}
-                      <div className="space-y-2">
-                          {myModules.map(m => (
-                              <button 
-                                key={m.id}
-                                onClick={() => {
-                                    setShowModuleSelector(false);
-                                    setSelectedModuleForContent(m); 
-                                }}
-                                className="w-full text-left p-3 border rounded-lg hover:bg-red-50 hover:border-red-200 transition flex justify-between items-center group"
-                              >
-                                  <span className="font-medium text-gray-700 group-hover:text-red-700">{m.title}</span>
-                                  <ChevronRight size={16} className="text-gray-300 group-hover:text-red-500"/>
-                              </button>
-                          ))}
-                      </div>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {showCreateTest && (
-        <TestCreation
-          courses={myCourses}
-          modules={myModules}
-          currentUser={user}
-          initialData={editingTest} 
-          onCreateTest={() => { fetchData(); setShowCreateTest(false); }}
-          onClose={() => setShowCreateTest(false)}
-        />
-      )}
-      
-      {selectedModuleForContent && (
-        <ModuleContentManager
-            module={selectedModuleForContent}
-            materials={studyMaterials.filter(m => {
-                 const type = ((m as any).contentType || m.type || '').toUpperCase();
-                 return type !== 'QUIZ' && type !== 'ASSIGNMENT';
-            })}
-            currentUser={user}
-            onDataMutated={fetchData} 
-            onClose={() => setSelectedModuleForContent(null)} 
-        />
-      )}
-
-      {showCreateModule && (
-        <ModuleCreationModal
-            courses={myCourses}
-            onDataMutated={fetchData}
-            onClose={() => setShowCreateModule(false)}
-        />
-      )}
-
-      {showCreateAssignment && (
-        <AssignmentCreationModal 
-            courses={myCourses}
-            modules={myModules}
-            currentUser={user}
-            onClose={() => setShowCreateAssignment(false)}
-            onCreated={() => { fetchData(); setShowCreateAssignment(false); }}
-        />
-      )}
+      {/* MODALS (Keep existing ones) */}
+      {showModuleSelector && <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"><div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden"><div className="flex justify-between items-center p-4 border-b"><h3 className="text-lg font-bold text-gray-800">Select Module</h3><button onClick={() => setShowModuleSelector(false)}><X className="w-5 h-5 text-gray-400 hover:text-red-600" /></button></div><div className="p-4 overflow-y-auto max-h-[60vh]"><div className="space-y-2">{myModules.map(m => (<button key={m.id} onClick={() => { setShowModuleSelector(false); setSelectedModuleForContent(m); }} className="w-full text-left p-3 border rounded-lg hover:bg-red-50 hover:border-red-200 transition flex justify-between items-center group"><span className="font-medium text-gray-700 group-hover:text-red-700">{m.title}</span><ChevronRight size={16} className="text-gray-300 group-hover:text-red-500"/></button>))}</div></div></div></div>}
+      {showCreateTest && <TestCreation courses={myCourses} modules={myModules} currentUser={user} initialData={editingTest} onCreateTest={() => { fetchData(); setShowCreateTest(false); }} onClose={() => setShowCreateTest(false)} />}
+      {selectedModuleForContent && <ModuleContentManager module={selectedModuleForContent} materials={studyMaterials.filter(m => { const type = ((m as any).contentType || m.type || '').toUpperCase(); return type !== 'QUIZ' && type !== 'ASSIGNMENT'; })} currentUser={user} onDataMutated={fetchData} onClose={() => setSelectedModuleForContent(null)} />}
+      {showCreateModule && <ModuleCreationModal courses={myCourses} onDataMutated={fetchData} onClose={() => setShowCreateModule(false)} />}
+      {showCreateAssignment && <AssignmentCreationModal courses={myCourses} modules={myModules} currentUser={user} onClose={() => setShowCreateAssignment(false)} onCreated={() => { fetchData(); setShowCreateAssignment(false); }} />}
     </div>
   );
 };

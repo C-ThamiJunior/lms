@@ -1,9 +1,9 @@
 // --- User Types ---
 export interface User {
   id: string;
-  name?: string;       // Made optional to allow firstname/surname usage
-  firstname?: string;  // Added for DB compatibility
-  surname?: string;    // Added for DB compatibility
+  name?: string;       
+  firstname?: string;  
+  surname?: string;    
   email: string;
   role: 'student' | 'facilitator' | 'admin';
   isActive: boolean;
@@ -17,7 +17,7 @@ export interface Course {
   title: string;
   description: string;
   facilitatorId?: string; 
-  facilitator?: User; // Nested object from backend
+  facilitator?: User; 
   isActive: boolean;
   createdAt: string;
 }
@@ -35,7 +35,7 @@ export interface StudyMaterial {
   title: string;
   description: string;
   type: 'VIDEO' | 'PDF' | 'LINK' | 'QUIZ' | 'ASSIGNMENT';
-  contentType?: string; // Backend might send this instead of 'type'
+  contentType?: string;
   url: string;
   moduleId: string;
   isCompleted?: boolean;
@@ -50,7 +50,7 @@ export interface Test {
   moduleId: string;
   totalMarks: number;
   passingMarks: number;
-  duration: number; // in minutes
+  duration: number; 
   timed: boolean;
   timeLimitInMinutes?: number;
   questions?: TestQuestion[];
@@ -61,7 +61,7 @@ export interface TestQuestion {
   text: string;
   type: 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER';
   options?: string[] | { id: string; text: string }[];
-  correctAnswer?: string; // Only visible to facilitators
+  correctAnswer?: string; 
   points: number;
 }
 
@@ -71,19 +71,21 @@ export interface Assignment {
   description: string;
   courseId: string;
   moduleId: string;
+  facilitatorId: string; // ✅ Added to match Backend
   fileUrl?: string;
   dueDate: string;
-  totalPoints: number;
+  totalMarks: number;    // ✅ FIXED: Was 'totalPoints'
   isActive: boolean;
+  createdAt?: string;    
 }
 
+// ✅ FIXED: Updated to match nested objects from Java
 export interface AssignmentSubmission {
   id: string;
-  assignmentId: string;
-  studentId: string;
-  student?: User;
+  assignment: Assignment; // Backend sends the full object
+  student: User;          // Backend sends the full object
   fileUrl: string;
-  submissionDate: string;
+  submissionDate: string | number[]; // Can be ISO string or Array [2024, 1, 1...]
   grade?: number;
   feedback?: string;
   status: 'SUBMITTED' | 'GRADED' | 'LATE';
@@ -129,4 +131,20 @@ export interface Enrollment {
   progress: number;
   isActive: boolean;
   status: 'ACTIVE' | 'COMPLETED' | 'DROPPED';
+}
+
+export interface ActivityLog {
+    id: number;
+    userId: number;
+    action: string;
+    timestamp: string;
+}
+
+export interface TestResult {
+    id: string;
+    quizId: string;
+    studentId: string;
+    score: number;
+    totalMarks: number;
+    date: string;
 }

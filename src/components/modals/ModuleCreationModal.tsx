@@ -8,7 +8,7 @@ interface ModuleCreationModalProps {
   onClose: () => void;
 }
 
-const API_BASE_URL = 'https://b-t-backend-production-1580.up.railway.app/api';
+const API_BASE_URL = 'https://b-t-backend-uc9w.onrender.com/api';
 
 export const ModuleCreationModal: React.FC<ModuleCreationModalProps> = ({ courses, onDataMutated, onClose }) => {
   const [formData, setFormData] = useState({
