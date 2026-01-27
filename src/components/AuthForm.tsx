@@ -18,7 +18,7 @@ interface AuthFormProps {
   onRegister: (data: { user: User }) => void;
 }
 
-const API_BASE_URL = "https://b-t-backend-production-1580.up.railway.app/api/auth";
+const API_BASE_URL = "https://b-t-backend-uc9w.onrender.com/api/auth";
 
 export const AuthForm: React.FC<AuthFormProps> = ({ onLogin, onRegister }) => {
   const [isLoginMode, setIsLoginMode] = useState(true);
